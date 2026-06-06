@@ -59,6 +59,9 @@ class Settings(BaseSettings):
     enable_detail_fetch: bool = True
     enable_llm_enrich: bool = True
     enable_wiki: bool = True
+    # Durable execution: persist graph state per super-step so an interrupted run resumes.
+    enable_checkpointing: bool = True
+    checkpoint_db: str = "agent_state.sqlite"
     # Where the knowledge wiki is written. Gitignored so it survives `git reset --hard` redeploys.
     wiki_dir: str = "wiki"
     log_level: str = "INFO"

@@ -10,6 +10,7 @@ authors = [{ name = "Ali Alp Oezer" }]
 dependencies = [
     # Orchestration
     "langgraph>=0.2.0",
+    "langgraph-checkpoint-sqlite>=2.0",   # durable execution (resume interrupted runs)
     "langchain-core>=0.3.0",
     "langchain-openai>=0.2.0",      # OpenRouter + OpenCode Zen (OpenAI-compatible)
     "langchain-anthropic>=0.2.0",   # Claude hard tier

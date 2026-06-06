@@ -113,10 +113,22 @@ def main(argv: list[str] | None = None) -> int:
         return _run_lint(settings)
 
     deps = _build_deps(settings)
-    graph = build_graph(deps)
-
     result = RunResult(started_at=datetime.now(UTC))
-    final = graph.invoke({"result": result})
+
+    if settings.enable_checkpointing and not settings.dry_run:
+        from langgraph.checkpoint.sqlite import SqliteSaver
+
+        from apartment_agent.checkpoint import new_thread_id, resume_incomplete
+
+        with SqliteSaver.from_conn_string(settings.checkpoint_db) as saver:
+            graph = build_graph(deps, checkpointer=saver)
+            resumed = resume_incomplete(graph)
+            if resumed:
+                log.info("resumed %d interrupted run(s): %s", len(resumed), ", ".join(resumed))
+            config = {"configurable": {"thread_id": new_thread_id()}}
+            final = graph.invoke({"result": result}, config=config)
+    else:
+        final = build_graph(deps).invoke({"result": result})
     result.finished_at = datetime.now(UTC)
 
     if settings.dry_run:

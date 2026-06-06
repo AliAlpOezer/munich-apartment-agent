@@ -81,7 +81,7 @@ def _enrich_user(x: Listing) -> str:
     )
 
 
-def build_graph(deps: Deps):
+def build_graph(deps: Deps, checkpointer=None):
     def scrape(state: AgentState) -> dict:
         result = state["result"]
         raw: list[Listing] = []
@@ -229,4 +229,4 @@ def build_graph(deps: Deps):
     g.add_edge("persist", "wiki")
     g.add_edge("wiki", "notify")
     g.add_edge("notify", END)
-    return g.compile()
+    return g.compile(checkpointer=checkpointer)
