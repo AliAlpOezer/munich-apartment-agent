@@ -36,3 +36,22 @@ create table if not exists listings (
 create index if not exists listings_notified_idx   on listings (notified_at);
 create index if not exists listings_first_seen_idx  on listings (first_seen_at desc);
 create index if not exists listings_fit_idx         on listings (fit_score desc);
+
+-- Per-run metrics (observability / trend history; also feeds the wiki + frontend).
+create table if not exists runs (
+    id              bigint generated always as identity primary key,
+    started_at      timestamptz,
+    finished_at     timestamptz,
+    duration_ms     numeric,
+    scraped         int,
+    matched         int,
+    new             int,
+    notified        int,
+    errors          int,
+    tokens          jsonb       not null default '{}'::jsonb,   -- {calls,input_tokens,output_tokens}
+    node_timings_ms jsonb       not null default '{}'::jsonb,
+    error_detail    jsonb       not null default '[]'::jsonb,
+    created_at      timestamptz not null default now()
+);
+
+create index if not exists runs_created_idx on runs (created_at desc);

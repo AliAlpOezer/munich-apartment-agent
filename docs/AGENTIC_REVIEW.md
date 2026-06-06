@@ -11,7 +11,7 @@ item lands.
 |---|------|--------|
 | 1 | Durable execution / checkpointing | ✅ done |
 | 2 | Evals (golden set + LLM-as-judge) | ⏳ planned |
-| 3 | Observability (run metrics + tracing) | ⏳ planned |
+| 3 | Observability (run metrics + tracing) | ✅ done |
 | 4 | Structured output + confidence escalation (C2) | ✅ done |
 | 5 | Retries/backoff + prompt-injection hygiene | ✅ done |
 | 6 | Human-in-the-loop feedback loop | ⏳ planned |
@@ -40,11 +40,12 @@ are regression-tested and per-model quality is tracked so models can be swapped 
 LLM-as-judge for synthesis coherence; runs offline against a fake model in tests, and against the live
 router when keys are present.
 
-### 3. Observability — run metrics + tracing — ⏳
+### 3. Observability — run metrics + tracing — ✅
 **Convention.** OpenTelemetry GenAI semantic conventions: per-node spans with model, token usage,
 latency, cost; run metrics persisted for trend analysis.
-**Plan.** Capture per-node timings + token usage on `RunResult` and persist to a `runs` table; enable
-LangSmith tracing via env (`LANGCHAIN_TRACING_V2`). Run history also feeds the wiki and the frontend.
+**Implemented.** Each node is wrapped to record wall time on `RunResult.node_timings_ms`; the router
+accumulates token usage (`router.usage`). After each run the metrics persist to a new `runs` table
+(`run_to_row` + `ListingsDB.record_run`). LangSmith tracing is opt-in via `LANGCHAIN_TRACING_V2`.
 
 ### 4. Structured output + confidence escalation (was C2) — ✅
 **Convention.** Provider-native structured output / constrained decoding over regex-scraped JSON; and

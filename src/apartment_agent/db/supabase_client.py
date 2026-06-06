@@ -5,11 +5,29 @@ from __future__ import annotations
 import logging
 from datetime import UTC, date, datetime
 
-from apartment_agent.models import Listing, ListingType
+from apartment_agent.models import Listing, ListingType, RunResult
 
 log = logging.getLogger(__name__)
 
 TABLE = "listings"
+RUNS_TABLE = "runs"
+
+
+def run_to_row(r: RunResult) -> dict:
+    """Map a RunResult to a `runs` table row (JSON-serializable)."""
+    return {
+        "started_at": r.started_at.isoformat() if r.started_at else None,
+        "finished_at": r.finished_at.isoformat() if r.finished_at else None,
+        "duration_ms": r.duration_ms,
+        "scraped": r.scraped,
+        "matched": r.matched,
+        "new": r.new,
+        "notified": r.notified,
+        "errors": len(r.errors),
+        "tokens": r.tokens or {},
+        "node_timings_ms": r.node_timings_ms or {},
+        "error_detail": r.errors,
+    }
 
 
 def _as_date(value) -> date | None:
@@ -99,6 +117,10 @@ class ListingsDB:
             .execute()
         )
         return [row_to_listing(r) for r in (resp.data or [])]
+
+    def record_run(self, result: RunResult) -> None:
+        """Persist one run's metrics to the `runs` table (best-effort; caller logs failures)."""
+        self.client.table(RUNS_TABLE).insert(run_to_row(result)).execute()
 
     def mark_notified(self, source: str, external_ids: list[str]) -> None:
         if not external_ids:

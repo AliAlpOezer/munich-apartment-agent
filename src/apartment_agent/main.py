@@ -129,12 +129,20 @@ def main(argv: list[str] | None = None) -> int:
             final = graph.invoke({"result": result}, config=config)
     else:
         final = build_graph(deps).invoke({"result": result})
-    result.finished_at = datetime.now(UTC)
+
+    r = final.get("result", result)
+    r.finished_at = datetime.now(UTC)
+    if deps.router is not None:
+        r.tokens = deps.router.usage
+    if deps.db is not None and not settings.dry_run:
+        try:
+            deps.db.record_run(r)
+        except Exception as e:  # noqa: BLE001 - metrics persistence must not fail the run
+            log.warning("could not record run metrics: %s", e)
 
     if settings.dry_run:
         _print_dry_run(final)
 
-    r = final.get("result", result)
     log.info(
         "run done: scraped=%d matched=%d new=%d notified=%d errors=%d",
         r.scraped, r.matched, r.new, r.notified, len(r.errors),

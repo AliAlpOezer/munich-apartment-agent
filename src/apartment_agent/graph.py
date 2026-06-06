@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -270,12 +271,23 @@ def build_graph(deps: Deps, checkpointer=None):
 
     from langgraph.graph import END, START, StateGraph
 
+    def _timed(name, fn):
+        """Wrap a node so its wall time lands on RunResult.node_timings_ms (observability)."""
+        def wrapped(state: AgentState) -> dict:
+            t0 = time.perf_counter()
+            try:
+                return fn(state)
+            finally:
+                elapsed = round((time.perf_counter() - t0) * 1000, 1)
+                state["result"].node_timings_ms[name] = elapsed
+        return wrapped
+
     g = StateGraph(AgentState)
     for name, fn in [
         ("scrape", scrape), ("filter", filter_node), ("dedup", dedup), ("detail", detail),
         ("enrich", enrich), ("persist", persist), ("wiki", wiki), ("notify", notify),
     ]:
-        g.add_node(name, fn)
+        g.add_node(name, _timed(name, fn))
     g.add_edge(START, "scrape")
     g.add_edge("scrape", "filter")
     g.add_edge("filter", "dedup")

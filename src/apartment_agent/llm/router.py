@@ -40,6 +40,14 @@ class ModelRouter:
     def __init__(self, settings: Settings):
         self.s = settings
         self._cache: dict[tuple[str, str], object] = {}
+        # Cumulative LLM usage across this run (observability).
+        self.usage: dict[str, int] = {"calls": 0, "input_tokens": 0, "output_tokens": 0}
+
+    def _track(self, resp) -> None:
+        self.usage["calls"] += 1
+        meta = getattr(resp, "usage_metadata", None) or {}
+        self.usage["input_tokens"] += int(meta.get("input_tokens", 0) or 0)
+        self.usage["output_tokens"] += int(meta.get("output_tokens", 0) or 0)
 
     # -- tier -> [(provider, model_id), ...] ---------------------------------
     def models_for_tier(self, tier: Tier) -> list[tuple[str, str]]:
@@ -114,6 +122,7 @@ class ModelRouter:
         for provider, model_id in self._candidates(tier, max_tier):
             try:
                 resp = _invoke(self._make(provider, model_id), messages)
+                self._track(resp)
                 content = resp.content if hasattr(resp, "content") else str(resp)
             except Exception as e:  # noqa: BLE001 - rotate/escalate on any failure
                 last_err = e
@@ -145,6 +154,7 @@ class ModelRouter:
             try:
                 model = self._make(provider, model_id).with_structured_output(schema)
                 result = _invoke(model, messages)
+                self.usage["calls"] += 1  # structured output drops usage_metadata
             except Exception as e:  # noqa: BLE001
                 last_err = e
                 log.warning("structured LLM call failed on %s/%s: %s", provider, model_id, e)

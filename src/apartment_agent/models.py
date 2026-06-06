@@ -104,3 +104,12 @@ class RunResult(BaseModel):
     errors: list[str] = Field(default_factory=list)
     started_at: datetime | None = None
     finished_at: datetime | None = None
+    # Observability: per-node wall time and cumulative LLM token usage for this run.
+    node_timings_ms: dict[str, float] = Field(default_factory=dict)
+    tokens: dict[str, int] = Field(default_factory=dict)
+
+    @property
+    def duration_ms(self) -> float | None:
+        if self.started_at and self.finished_at:
+            return (self.finished_at - self.started_at).total_seconds() * 1000
+        return None
