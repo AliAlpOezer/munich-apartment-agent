@@ -123,7 +123,7 @@ def build_graph(deps: Deps):
         for x in new:
             try:
                 text = deps.router.complete(
-                    _ENRICH_SYSTEM, _enrich_user(x), tier=Tier.MEDIUM, max_tier=Tier.HARD
+                    _ENRICH_SYSTEM, _enrich_user(x), tier=Tier.CHEAP, max_tier=Tier.MEDIUM
                 )
                 x.fit_score, x.summary = _parse_assessment(text)
             except Exception as e:  # noqa: BLE001
