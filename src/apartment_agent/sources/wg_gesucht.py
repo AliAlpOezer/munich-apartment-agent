@@ -24,6 +24,7 @@ from datetime import UTC, date, datetime
 from selectolax.parser import HTMLParser, Node
 
 from apartment_agent.models import FilterConfig, Listing, ListingType
+from apartment_agent.retry import network_retry
 from apartment_agent.sources.base import SourceAdapter
 
 BASE = "https://www.wg-gesucht.de"
@@ -218,6 +219,7 @@ class WgGesuchtAdapter(SourceAdapter):
         )
         return [f"{path}?{query}"]
 
+    @network_retry()
     def fetch(self, url: str) -> str:
         from curl_cffi import requests  # lazy: parsing/tests need no network deps
 

@@ -13,7 +13,7 @@ item lands.
 | 2 | Evals (golden set + LLM-as-judge) | ⏳ planned |
 | 3 | Observability (run metrics + tracing) | ⏳ planned |
 | 4 | Structured output + confidence escalation (C2) | ✅ done |
-| 5 | Retries/backoff + prompt-injection hygiene | ⏳ planned |
+| 5 | Retries/backoff + prompt-injection hygiene | ✅ done |
 | 6 | Human-in-the-loop feedback loop | ⏳ planned |
 | 7 | Bounded-concurrency fan-out | ⏳ planned |
 
@@ -54,10 +54,12 @@ escalates to the next tier (and the last result is returned as a best effort if 
 `assess_listing` tries `router.structured(Assessment)` first and falls back to regex JSON for free
 models that can't tool-call; the `Assessment.confidence` field drives escalation below `0.5`.
 
-### 5. Retries/backoff + prompt-injection hygiene — ⏳
+### 5. Retries/backoff + prompt-injection hygiene — ✅
 **Convention.** Wrap flaky external calls in retry-with-jitter; treat scraped text as untrusted input.
-**Plan.** `tenacity` retries on `fetch`/`fetch_costs`/LLM calls; delimit scraped fields as untrusted
-data in prompts and keep outputs range-clamped.
+**Implemented.** `retry.py`'s `network_retry` (exponential + jitter, reraises the original error)
+wraps `WgGesuchtAdapter.fetch` and the router's per-model invoke. Scraped fields go inside a
+`<listing>` block with the enrich/wiki system prompts instructing the model to treat them as data,
+never instructions; `fit_score` stays range-clamped.
 
 ### 6. Human-in-the-loop feedback loop — ⏳
 **Convention.** HITL feedback becomes procedural memory that tunes the agent.

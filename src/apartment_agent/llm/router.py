@@ -19,8 +19,15 @@ from enum import IntEnum
 from pydantic import BaseModel
 
 from apartment_agent.config import Settings
+from apartment_agent.retry import network_retry
 
 log = logging.getLogger(__name__)
+
+
+@network_retry(attempts=2, max_wait=8.0)
+def _invoke(model, messages):
+    """One model call with a short transient-error retry, before the router rotates tiers."""
+    return model.invoke(messages)
 
 
 class Tier(IntEnum):
@@ -106,7 +113,7 @@ class ModelRouter:
         last_ok: str | None = None
         for provider, model_id in self._candidates(tier, max_tier):
             try:
-                resp = self._make(provider, model_id).invoke(messages)
+                resp = _invoke(self._make(provider, model_id), messages)
                 content = resp.content if hasattr(resp, "content") else str(resp)
             except Exception as e:  # noqa: BLE001 - rotate/escalate on any failure
                 last_err = e
@@ -137,7 +144,7 @@ class ModelRouter:
         for provider, model_id in self._candidates(tier, max_tier):
             try:
                 model = self._make(provider, model_id).with_structured_output(schema)
-                result = model.invoke(messages)
+                result = _invoke(model, messages)
             except Exception as e:  # noqa: BLE001
                 last_err = e
                 log.warning("structured LLM call failed on %s/%s: %s", provider, model_id, e)
