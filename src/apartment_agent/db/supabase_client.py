@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from apartment_agent.models import Listing
 
@@ -65,7 +65,7 @@ class ListingsDB:
     def mark_notified(self, source: str, external_ids: list[str]) -> None:
         if not external_ids:
             return
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         (
             self.client.table(TABLE)
             .update({"notified_at": now})

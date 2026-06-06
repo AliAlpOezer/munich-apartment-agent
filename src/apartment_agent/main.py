@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import argparse
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from apartment_agent.config import load_settings
 from apartment_agent.graph import Deps, build_graph
@@ -79,9 +79,9 @@ def main(argv: list[str] | None = None) -> int:
     deps = _build_deps(settings)
     graph = build_graph(deps)
 
-    result = RunResult(started_at=datetime.now(timezone.utc))
+    result = RunResult(started_at=datetime.now(UTC))
     final = graph.invoke({"result": result})
-    result.finished_at = datetime.now(timezone.utc)
+    result.finished_at = datetime.now(UTC)
 
     if settings.dry_run:
         _print_dry_run(final)

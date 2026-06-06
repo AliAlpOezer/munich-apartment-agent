@@ -7,12 +7,12 @@ without scraping/LLM/DB extras installed.
 from __future__ import annotations
 
 from datetime import date, datetime
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
 
-class ListingType(str, Enum):
+class ListingType(StrEnum):
     WG_ROOM = "wg_room"        # a room in a shared flat (Wohngemeinschaft)
     APARTMENT = "apartment"    # a whole flat (1-Zimmer-Wohnung / Wohnung)
     UNKNOWN = "unknown"

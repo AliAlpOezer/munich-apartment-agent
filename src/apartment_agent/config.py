@@ -7,7 +7,6 @@ from __future__ import annotations
 
 from datetime import date
 
-from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from apartment_agent.models import FilterConfig, ListingType
