@@ -10,7 +10,7 @@ item lands.
 | # | Item | Status |
 |---|------|--------|
 | 1 | Durable execution / checkpointing | ✅ done |
-| 2 | Evals (golden set + LLM-as-judge) | ⏳ planned |
+| 2 | Evals (golden set + LLM-as-judge) | ✅ done |
 | 3 | Observability (run metrics + tracing) | ✅ done |
 | 4 | Structured output + confidence escalation (C2) | ✅ done |
 | 5 | Retries/backoff + prompt-injection hygiene | ✅ done |
@@ -33,12 +33,13 @@ restarting; it also unlocks time-travel debugging and human-in-the-loop interrup
 adds `resume_incomplete()`, which finishes any thread left with pending next-nodes before a fresh run
 starts. `ENABLE_CHECKPOINTING` / `CHECKPOINT_DB`.
 
-### 2. Evals — golden set + LLM-as-judge — ⏳
+### 2. Evals — golden set + LLM-as-judge — ✅
 **Convention.** A labelled dataset plus automated evals (assertions + LLM-as-judge) run in CI; prompts
 are regression-tested and per-model quality is tracked so models can be swapped with confidence.
-**Plan.** An `evals/` harness with a labelled dataset of listings (expected fit-score bands) and an
-LLM-as-judge for synthesis coherence; runs offline against a fake model in tests, and against the live
-router when keys are present.
+**Implemented.** `apartment_agent.evals` holds a hand-labelled golden set (`GOLDEN`) with expected
+fit-score bands and a harness: `run_fit_evals` exercises the real `assess_listing` path and checks
+each band; `judge_synthesis` is an LLM-as-judge for wiki-synthesis groundedness. Runs offline against
+fake routers in `tests/test_evals.py`, and live via `python -m apartment_agent.evals.harness`.
 
 ### 3. Observability — run metrics + tracing — ✅
 **Convention.** OpenTelemetry GenAI semantic conventions: per-node spans with model, token usage,
