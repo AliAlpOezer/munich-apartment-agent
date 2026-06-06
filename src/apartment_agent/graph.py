@@ -10,12 +10,12 @@ ModelRouter; everything else is deterministic.
 
 from __future__ import annotations
 
+import json
 import logging
+import re
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import TypedDict
-
-from pydantic import BaseModel, Field
 
 from apartment_agent.config import Settings
 from apartment_agent.db.supabase_client import ListingsDB
@@ -46,19 +46,26 @@ class Deps:
     notifier: TelegramNotifier | None = None
 
 
-class ListingAssessment(BaseModel):
-    """Structured enrichment output."""
-
-    fit_score: int = Field(ge=0, le=100, description="0-100 how well it fits the search")
-    summary: str = Field(description="one concise sentence; mention the standout pro/con")
-
-
 _ENRICH_SYSTEM = (
     "You help someone relocating to Munich pick rentals. They want an affordable place "
     "(warm rent <= 700€), at least 12 m², available around 1 October 2026, in Munich or a "
-    "commutable suburb. Given one listing, rate fit 0-100 (price, size, location, timing) "
-    "and write one concise sentence highlighting the main pro or con."
+    "commutable suburb. Rate how well a listing fits (0-100, weighing price, size, location, "
+    "timing) and summarize it in one sentence highlighting the standout pro or con. "
+    'Respond with ONLY a JSON object: {"fit_score": <int 0-100>, "summary": "<one sentence>"}. '
+    "No markdown, no preamble."
 )
+
+# Tolerant extraction: free/reasoning models often wrap the JSON in prose or <think> blocks.
+_JSON_RE = re.compile(r'\{[^{}]*"fit_score"[^{}]*\}', re.S)
+
+
+def _parse_assessment(text: str) -> tuple[int, str]:
+    match = _JSON_RE.search(text) or re.search(r"\{.*\}", text, re.S)
+    if not match:
+        raise ValueError(f"no JSON in response: {text[:120]!r}")
+    data = json.loads(match.group(0))
+    score = max(0, min(100, int(data["fit_score"])))
+    return score, str(data.get("summary", "")).strip()
 
 
 def _enrich_user(x: Listing) -> str:
@@ -115,11 +122,10 @@ def build_graph(deps: Deps):
             return {}
         for x in new:
             try:
-                a = deps.router.structured(
-                    _ENRICH_SYSTEM, _enrich_user(x), ListingAssessment, tier=Tier.MEDIUM
+                text = deps.router.complete(
+                    _ENRICH_SYSTEM, _enrich_user(x), tier=Tier.MEDIUM, max_tier=Tier.HARD
                 )
-                x.fit_score = max(0, min(100, int(a.fit_score)))
-                x.summary = a.summary
+                x.fit_score, x.summary = _parse_assessment(text)
             except Exception as e:  # noqa: BLE001
                 state["result"].errors.append(f"enrich {x.external_id}: {e}")
         new.sort(key=lambda x: (x.fit_score if x.fit_score is not None else -1), reverse=True)

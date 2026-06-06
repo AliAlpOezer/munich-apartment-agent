@@ -39,7 +39,11 @@ class ModelRouter:
             return [("openrouter", m) for m in self.s.tier1_model_list]
         if tier is Tier.MEDIUM:
             return [("opencode", self.s.tier2_model)] if self.s.tier2_model else []
-        return [("anthropic", self.s.tier3_model)] if self.s.tier3_model else []
+        # HARD: use Anthropic directly if a key is set, else serve Claude via OpenCode Zen.
+        if not self.s.tier3_model:
+            return []
+        provider = "anthropic" if self.s.anthropic_api_key else "opencode"
+        return [(provider, self.s.tier3_model)]
 
     def _make(self, provider: str, model_id: str):
         key = (provider, model_id)
@@ -61,14 +65,14 @@ class ModelRouter:
             )
             model = ChatOpenAI(
                 model=model_id, api_key=api_key, base_url=base,
-                temperature=0, timeout=60, max_retries=0,
+                temperature=0, timeout=90, max_retries=0, max_tokens=2048,
             )
         elif provider == "anthropic":
             from langchain_anthropic import ChatAnthropic
 
             model = ChatAnthropic(
                 model=model_id, api_key=self.s.anthropic_api_key,
-                temperature=0, timeout=60, max_retries=0,
+                temperature=0, timeout=90, max_retries=0, max_tokens=2048,
             )
         else:  # pragma: no cover - guard
             raise ValueError(f"unknown provider {provider!r}")
