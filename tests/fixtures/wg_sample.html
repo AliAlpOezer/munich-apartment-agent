@@ -1,0 +1,70 @@
+<!--
+  Synthetic WG-Gesucht search-result fragment for parser tests.
+  Mirrors the real card markup (div[data-id] -> h2.truncate_title a, .col-xs-11 span,
+  .row.middle with price/availability/size) but contains NO real personal data.
+-->
+<html lang="de"><head><meta charset="utf-8"></head><body>
+<div class="offer_list">
+
+  <!-- A: WG room, single available-from date -->
+  <div id="liste-details-ad-1000001" class="wgg_card offer_list_item " data-id="1000001">
+    <div class="row">
+      <div class="col-sm-8 card_body">
+        <h2 class="truncate_title noprint">
+          <a href="/wg-zimmer-in-Muenchen-Schwabing.1000001.html" title="Anzeige ansehen">Helles Zimmer in Schwabing</a>
+        </h2>
+        <div class="col-xs-11 hidable_content ">
+          <span> 2er WG | München Schwabing | Amalienstraße </span>
+        </div>
+        <div class="row noprint middle hidable_content ">
+          <div class="col-xs-3"><b>650 €</b></div>
+          <div class="col-xs-5 text-center"> 01.11.2026 </div>
+          <div class="col-xs-3 text-right"><b>18 m²</b></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- B: 1-room apartment, available-from/to range, decimal size -->
+  <div id="liste-details-ad-1000002" class="wgg_card offer_list_item " data-id="1000002">
+    <div class="row">
+      <div class="col-sm-8 card_body">
+        <h2 class="truncate_title noprint">
+          <a href="/1-zimmer-wohnungen-in-Muenchen-Sendling.1000002.html" title="Anzeige ansehen">1-Zimmer-Wohnung in Sendling</a>
+        </h2>
+        <div class="col-xs-11 hidable_content ">
+          <span> 1 Zimmer Wohnung | München Sendling | Lindwurmstraße </span>
+        </div>
+        <div class="row noprint middle hidable_content ">
+          <div class="col-xs-3"><b>700 €</b></div>
+          <div class="col-xs-5 text-center"> 15.09.2026 - 31.12.2026 </div>
+          <div class="col-xs-3 text-right"><b>30,5 m²</b></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- C: WG room, no date ("ab sofort"), over price + over size cap -->
+  <div id="liste-details-ad-1000003" class="wgg_card offer_list_item " data-id="1000003">
+    <div class="row">
+      <div class="col-sm-8 card_body">
+        <h2 class="truncate_title noprint">
+          <a href="/wg-zimmer-in-Muenchen-Bogenhausen.1000003.html" title="Anzeige ansehen">Großes Zimmer Bogenhausen</a>
+        </h2>
+        <div class="col-xs-11 hidable_content ">
+          <span> 3er WG | München Bogenhausen | Prinzregentenstraße </span>
+        </div>
+        <div class="row noprint middle hidable_content ">
+          <div class="col-xs-3"><b>1.200 €</b></div>
+          <div class="col-xs-5 text-center"> ab sofort </div>
+          <div class="col-xs-3 text-right"><b>25 m²</b></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- promoted/empty card with non-numeric id: must be ignored -->
+  <div data-id="sponsored" class="wgg_card"><div class="row"></div></div>
+
+</div>
+</body></html>

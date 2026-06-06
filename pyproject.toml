@@ -1,0 +1,61 @@
+[project]
+name = "munich-apartment-agent"
+version = "0.1.0"
+description = "Autonomous LangGraph agent that hunts Munich apartment/WG listings every 3h, dedups, persists to Supabase, and notifies via Telegram. Tiered LLM usage: cheap models for extraction, premium only for hard reasoning."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Ali Alp Oezer" }]
+
+dependencies = [
+    # Orchestration
+    "langgraph>=0.2.0",
+    "langchain-core>=0.3.0",
+    "langchain-openai>=0.2.0",      # OpenRouter + OpenCode Zen (OpenAI-compatible)
+    "langchain-anthropic>=0.2.0",   # Claude hard tier
+    # Data modelling / config
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "python-dateutil>=2.9",
+    # Scraping
+    "curl-cffi>=0.7",               # browser-TLS-impersonating HTTP client
+    "selectolax>=0.3",              # fast HTML parsing
+    "beautifulsoup4>=4.12",         # fallback parsing
+    "tenacity>=8.3",                # retries/backoff
+    # Storage + notify
+    "supabase>=2.6",
+    "httpx>=0.27",                  # Telegram Bot API calls
+    # Logging
+    "structlog>=24.1",
+]
+
+[project.optional-dependencies]
+browser = ["playwright>=1.45"]      # optional headless fallback when curl-cffi is blocked
+dev = [
+    "pytest>=8.2",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.5",
+]
+
+[project.scripts]
+apartment-agent = "apartment_agent.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/apartment_agent"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

@@ -1,0 +1,12 @@
+[Unit]
+Description=Munich apartment-hunter agent (single run)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# The app loads ./.env itself (pydantic-settings), so just set the working dir.
+WorkingDirectory=%h/munich-apartment-agent
+ExecStart=%h/munich-apartment-agent/.venv/bin/python -m apartment_agent.main
+TimeoutStartSec=600
+Nice=10
