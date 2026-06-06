@@ -8,7 +8,35 @@ import pytest
 
 from apartment_agent.graph import _ENRICH_SYSTEM, _enrich_user
 from apartment_agent.models import Listing, ListingType
-from apartment_agent.retry import network_retry
+from apartment_agent.retry import is_transient, network_retry
+
+
+class _HttpError(Exception):
+    def __init__(self, status_code):
+        self.status_code = status_code
+
+
+def test_is_transient_classifies_errors():
+    assert is_transient(TimeoutError())
+    assert is_transient(ConnectionError())
+    assert is_transient(_HttpError(429))      # rate limit -> retry
+    assert is_transient(_HttpError(503))      # server error -> retry
+    assert not is_transient(_HttpError(400))  # bad request (e.g. structured-output unsupported)
+    assert not is_transient(_HttpError(404))
+    assert is_transient(RuntimeError("unknown"))  # no status -> default retryable
+
+
+def test_network_retry_does_not_retry_permanent_errors():
+    calls = {"n": 0}
+
+    @network_retry(attempts=3, max_wait=0.01)
+    def bad_request():
+        calls["n"] += 1
+        raise _HttpError(400)
+
+    with pytest.raises(_HttpError):
+        bad_request()
+    assert calls["n"] == 1  # not retried — fail fast so the router escalates
 
 
 def test_network_retry_succeeds_after_transient_failures():

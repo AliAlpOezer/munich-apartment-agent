@@ -57,6 +57,8 @@ class Settings(BaseSettings):
     # Fetch each new listing's detail page to resolve the real warm/cold rent before the final
     # filter (the list card only shows one ambiguous figure). Off -> filter on the listed figure.
     enable_detail_fetch: bool = True
+    # Parallel detail-page fetches for new listings. Kept low to stay polite to the source.
+    detail_concurrency: int = 3
     enable_llm_enrich: bool = True
     enable_wiki: bool = True
     # Durable execution: persist graph state per super-step so an interrupted run resumes.

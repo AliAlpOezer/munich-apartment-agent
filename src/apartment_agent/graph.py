@@ -17,6 +17,7 @@ import logging
 import re
 import time
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TypedDict
@@ -190,14 +191,25 @@ def build_graph(deps: Deps, checkpointer=None):
         if not deps.settings.enable_detail_fetch or not new:
             return {}
         by_name = {a.name: a for a in deps.adapters}
-        kept: list[Listing] = []
-        for x in new:
+
+        def _resolve(x: Listing) -> None:
             adapter = by_name.get(x.source)
             if adapter is not None:
+                adapter.fetch_costs(x)  # mutates x in place; network call is retried internally
+
+        # bounded concurrency: a handful of detail pages in flight at once, still polite
+        workers = max(1, deps.settings.detail_concurrency)
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = {pool.submit(_resolve, x): x for x in new}
+            for fut in as_completed(futures):
+                x = futures[fut]
                 try:
-                    adapter.fetch_costs(x)
+                    fut.result()
                 except Exception as e:  # noqa: BLE001 - keep the listed figure on any failure
                     state["result"].errors.append(f"detail {x.external_id}: {e}")
+
+        kept: list[Listing] = []
+        for x in new:  # re-filter in the original order on the resolved warm rent
             ok, reasons = passes_filter(x, deps.filter_cfg)
             if ok:
                 kept.append(x)

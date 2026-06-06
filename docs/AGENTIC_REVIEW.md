@@ -15,7 +15,7 @@ item lands.
 | 4 | Structured output + confidence escalation (C2) | ✅ done |
 | 5 | Retries/backoff + prompt-injection hygiene | ✅ done |
 | 6 | Human-in-the-loop feedback loop | ⏳ planned |
-| 7 | Bounded-concurrency fan-out | ⏳ planned |
+| 7 | Bounded-concurrency fan-out | ✅ done |
 
 ## What's already aligned with modern practice
 - **Deterministic shell, stochastic core at the edges.** Parsing/filtering/dedup/wiki-stats are pure
@@ -61,17 +61,20 @@ models that can't tool-call; the `Assessment.confidence` field drives escalation
 **Implemented.** `retry.py`'s `network_retry` (exponential + jitter, reraises the original error)
 wraps `WgGesuchtAdapter.fetch` and the router's per-model invoke. Scraped fields go inside a
 `<listing>` block with the enrich/wiki system prompts instructing the model to treat them as data,
-never instructions; `fit_score` stays range-clamped.
+never instructions; `fit_score` stays range-clamped. Retries skip permanent 4xx errors
+(`is_transient`) — e.g. a free model's "response_format unavailable" 400 fails fast so the router
+escalates instead of retrying a hopeless call (a flaw the live eval surfaced).
 
 ### 6. Human-in-the-loop feedback loop — ⏳
 **Convention.** HITL feedback becomes procedural memory that tunes the agent.
 **Plan.** Sync Telegram 👍/👎 reactions (`--sync-feedback`), store them, and fold them into the wiki
 `preferences` page so the search intent learns over time.
 
-### 7. Bounded-concurrency fan-out — ⏳
+### 7. Bounded-concurrency fan-out — ✅
 **Convention.** Concurrent fan-out for I/O-bound steps, bounded to stay polite.
-**Plan.** Run `detail` fetches on a small bounded thread pool (`DETAIL_CONCURRENCY`), preserving
-per-request jitter.
+**Implemented.** The `detail` node fetches new listings' cost pages on a `ThreadPoolExecutor` capped
+at `DETAIL_CONCURRENCY` (default 3), preserving each request's jitter; results are re-filtered in the
+original order.
 
 ## Principles to preserve going forward
 - Keep the LLM at the edges; never let it author numbers or control flow.

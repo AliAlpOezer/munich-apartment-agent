@@ -75,3 +75,13 @@ def test_empty_scrape_routes_to_end():
     adapter = StubSource([], warm_by_id={})
     final = build_graph(_deps(adapter)).invoke({"result": RunResult()})
     assert final["result"].matched == 0 and final["result"].new == 0
+
+
+def test_detail_node_resolves_all_listings_under_bounded_concurrency():
+    listings = [_listing(str(i), 650.0) for i in range(7)]
+    warm = {str(i): 660.0 for i in range(7)}  # all under the 700 cap -> all kept
+    adapter = StubSource(listings, warm_by_id=warm)
+    final = build_graph(_deps(adapter, detail_concurrency=3)).invoke({"result": RunResult()})
+    assert len(final["new"]) == 7
+    # every listing had its warm rent resolved by a concurrent fetch_costs
+    assert all(x.price_warm == 660.0 for x in final["new"])
