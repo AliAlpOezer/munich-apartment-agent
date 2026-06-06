@@ -19,7 +19,7 @@ from __future__ import annotations
 import random
 import re
 import time
-from datetime import date
+from datetime import UTC, date, datetime
 
 from selectolax.parser import HTMLParser, Node
 
@@ -28,12 +28,6 @@ from apartment_agent.sources.base import SourceAdapter
 
 BASE = "https://www.wg-gesucht.de"
 MUNICH_CITY_ID = 90  # WG-Gesucht's city id for München
-
-# (url-slug, category-code, listing type) — category code is the 2nd number in the URL
-_CATEGORIES = {
-    ListingType.WG_ROOM: [("wg-zimmer", 0)],
-    ListingType.APARTMENT: [("1-zimmer-wohnungen", 1), ("wohnungen", 2)],
-}
 
 _DATE_RE = re.compile(r"(\d{2})\.(\d{2})\.(\d{4})")
 _NUM_RE = re.compile(r"\d[\d.]*(?:,\d+)?")
@@ -110,6 +104,8 @@ def _parse_card(card: Node) -> Listing | None:
         if bolds:
             price_text = bolds[0].text(strip=True)
             price = _to_float(price_text)                     # listed rent
+            if price is not None and price < 50:              # "auf Anfrage" / parse noise
+                price = None
             size = _to_float(bolds[-1].text(strip=True))      # m²
         center = mid.css_first(".col-xs-5.text-center, .text-center")
         if center is not None:
@@ -142,12 +138,27 @@ class WgGesuchtAdapter(SourceAdapter):
         self.request_delay = request_delay
 
     def build_search_urls(self, cfg: FilterConfig) -> list[str]:
-        urls: list[str] = []
-        for ltype in cfg.listing_types:
-            for slug, cat in _CATEGORIES.get(ltype, []):
-                # <slug>-in-Muenchen.<city>.<category>.1.0.html  (page 1)
-                urls.append(f"{BASE}/{slug}-in-Muenchen.{self.city_id}.{cat}.1.0.html")
-        return urls
+        """One combined search: all 4 categories (WG room, 1-room, flat, house), rent <= cap,
+        available from the move-in date onward (WG-Gesucht's `dFr` timestamp), offers only,
+        deactivated hidden. Size is NOT filtered server-side, so the local filter enforces it.
+        """
+        dfr = int(
+            datetime(
+                cfg.move_in_date.year, cfg.move_in_date.month, cfg.move_in_date.day, tzinfo=UTC
+            ).timestamp()
+        )
+        rmax = int(cfg.max_warm_rent_eur)
+        path = (
+            f"{BASE}/wg-zimmer-und-1-zimmer-wohnungen-und-wohnungen-und-haeuser-"
+            f"in-Muenchen.{self.city_id}.0+1+2+3.1.0.html"
+        )
+        query = (
+            "categories%5B%5D=0&categories%5B%5D=1&categories%5B%5D=2&categories%5B%5D=3"
+            "&rent_types%5B%5D=2&rent_types%5B%5D=1&rent_types%5B%5D=3"
+            f"&rent_range=0%2C{rmax}&offer_filter=1&city_id={self.city_id}"
+            f"&sort_order=0&noDeact=1&rMax={rmax}&dFr={dfr}"
+        )
+        return [f"{path}?{query}"]
 
     def fetch(self, url: str) -> str:
         from curl_cffi import requests  # lazy: parsing/tests need no network deps

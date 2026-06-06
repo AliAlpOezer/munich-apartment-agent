@@ -73,42 +73,33 @@ def test_unknown_size_kept(cfg):
     assert passes_filter(make_listing(size_sqm=None), cfg)[0]
 
 
-# --- Type ---
-def test_unwanted_type_fails():
-    cfg = FilterConfig(listing_types={ListingType.WG_ROOM})
-    ok, reasons = passes_filter(make_listing(listing_type=ListingType.APARTMENT), cfg)
-    assert not ok and any("type" in r for r in reasons)
+# --- Availability (window around the 2026-10-01 move-in) ---
+def test_available_on_move_in_passes(cfg):
+    assert passes_filter(make_listing(available_from=date(2026, 10, 1)), cfg)[0]
 
 
-def test_unknown_type_kept(cfg):
-    assert passes_filter(make_listing(listing_type=ListingType.UNKNOWN), cfg)[0]
+def test_available_within_before_grace_passes(cfg):
+    # default 14-day grace before move-in
+    assert passes_filter(make_listing(available_from=date(2026, 9, 20)), cfg)[0]
 
 
-# --- Availability ---
-def test_available_earlier_than_move_in_passes(cfg):
-    # available since June 2026 -> still rentable in October 2026
-    assert passes_filter(make_listing(available_from=date(2026, 6, 1)), cfg)[0]
-
-
-def test_available_within_window_passes(cfg):
-    # default window is 31 days after the 2026-10-01 move-in
-    assert passes_filter(make_listing(available_from=date(2026, 10, 30)), cfg)[0]
-
-
-def test_available_far_future_fails(cfg):
-    ok, reasons = passes_filter(make_listing(available_from=date(2027, 2, 1)), cfg)
+def test_available_too_early_fails(cfg):
+    ok, reasons = passes_filter(make_listing(available_from=date(2026, 6, 1)), cfg)
     assert not ok and any("available_from" in r for r in reasons)
 
 
-def test_sublet_ending_before_move_in_fails(cfg):
-    ok, reasons = passes_filter(
-        make_listing(available_from=date(2026, 6, 1), available_to=date(2026, 9, 15)), cfg
-    )
-    assert not ok and any("sublet" in r for r in reasons)
+def test_available_within_after_window_passes(cfg):
+    assert passes_filter(make_listing(available_from=date(2026, 12, 1)), cfg)[0]
 
 
-def test_unknown_dates_kept(cfg):
-    assert passes_filter(make_listing(available_from=None, available_to=None), cfg)[0]
+def test_available_too_far_future_fails(cfg):
+    ok, reasons = passes_filter(make_listing(available_from=date(2027, 5, 1)), cfg)
+    assert not ok and any("available_from" in r for r in reasons)
+
+
+def test_undated_rejected(cfg):
+    ok, reasons = passes_filter(make_listing(available_from=None), cfg)
+    assert not ok and any("available-from" in r for r in reasons)
 
 
 # --- Location ---

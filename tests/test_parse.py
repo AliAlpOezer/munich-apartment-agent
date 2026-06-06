@@ -70,8 +70,9 @@ def test_build_search_urls():
     from apartment_agent.models import FilterConfig
 
     urls = WgGesuchtAdapter().build_search_urls(FilterConfig())
-    joined = " ".join(urls)
-    assert any("wg-zimmer-in-Muenchen.90.0" in u for u in urls)       # WG rooms
-    assert any("1-zimmer-wohnungen-in-Muenchen.90.1" in u for u in urls)
-    assert any("wohnungen-in-Muenchen.90.2" in u for u in urls)
-    assert "90" in joined
+    assert len(urls) == 1
+    u = urls[0]
+    assert "0+1+2+3" in u                                   # all four categories
+    assert "city_id=90" in u
+    assert "rMax=700" in u and "rent_range=0%2C700" in u
+    assert "dFr=" in u                                      # available-from date filter present

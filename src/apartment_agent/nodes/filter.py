@@ -10,12 +10,11 @@ Filter rules (all must pass):
        - If neither is known: keep (flagged), since rent is the whole point and a
          missing value usually means a parse miss, not "free".
   2. Size >= min_size_sqm.  Unknown size: keep (flagged).
-  3. Listing type in the configured set (UNKNOWN is allowed through).
-  4. Availability overlaps the move-in date:
-       - Not a sublet that already ends before move-in (available_to >= move_in).
-       - Becomes available by move_in + window (available_from <= move_in + window).
-       - Unknown dates: keep.
-  5. Location matches one of the allowed substrings (checks district/address/city).
+  3. available_from within [move_in - before_grace, move_in + after_window].
+       - Undated ("ab sofort" / unparsed): rejected (we want a specific move-in match).
+       - Also rejects sublets that end before the move-in date.
+       (Listing categories are controlled by the search URL, so type is not re-checked.)
+  4. Location matches one of the allowed substrings (checks district/address/city).
        - No location text at all: keep (flagged).
 """
 
@@ -23,7 +22,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from apartment_agent.models import FilterConfig, Listing, ListingType
+from apartment_agent.models import FilterConfig, Listing
 
 
 def passes_filter(listing: Listing, cfg: FilterConfig) -> tuple[bool, list[str]]:
@@ -39,21 +38,19 @@ def passes_filter(listing: Listing, cfg: FilterConfig) -> tuple[bool, list[str]]
     if listing.size_sqm is not None and listing.size_sqm < cfg.min_size_sqm:
         reasons.append(f"size {listing.size_sqm:.0f}m² < {cfg.min_size_sqm:.0f}m²")
 
-    # 3. Type
-    if (
-        listing.listing_type is not ListingType.UNKNOWN
-        and listing.listing_type not in cfg.listing_types
-    ):
-        reasons.append(f"type {listing.listing_type.value} not wanted")
-
-    # 4. Availability window
-    latest_ok_start = cfg.move_in_date + timedelta(days=cfg.available_from_window_days)
+    # 3. Availability around the move-in date. The search already filters "from move_in onward"
+    #    (WG-Gesucht dFr); this enforces the window locally and drops undated / far-future listings.
+    #    (Listing type / categories are controlled by the search URL, so not re-checked here.)
+    earliest = cfg.move_in_date - timedelta(days=cfg.available_from_before_grace_days)
+    latest = cfg.move_in_date + timedelta(days=cfg.available_from_after_window_days)
+    if listing.available_from is None:
+        reasons.append("no available-from date")
+    elif listing.available_from < earliest:
+        reasons.append(f"available_from {listing.available_from} before {earliest}")
+    elif listing.available_from > latest:
+        reasons.append(f"available_from {listing.available_from} after {latest}")
     if listing.available_to is not None and listing.available_to < cfg.move_in_date:
-        reasons.append(f"sublet ends {listing.available_to} before move-in {cfg.move_in_date}")
-    if listing.available_from is not None and listing.available_from > latest_ok_start:
-        reasons.append(
-            f"available_from {listing.available_from} later than {latest_ok_start}"
-        )
+        reasons.append(f"sublet ends {listing.available_to} before move-in")
 
     # 5. Location
     haystack = " ".join(
