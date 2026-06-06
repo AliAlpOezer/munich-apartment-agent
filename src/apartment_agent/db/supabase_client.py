@@ -122,6 +122,62 @@ class ListingsDB:
         """Persist one run's metrics to the `runs` table (best-effort; caller logs failures)."""
         self.client.table(RUNS_TABLE).insert(run_to_row(result)).execute()
 
+    # -- human-in-the-loop feedback -----------------------------------------
+    def record_notification(self, message_id: int, source: str, external_id: str) -> None:
+        """Map a sent Telegram message to its listing so reactions can be resolved later."""
+        self.client.table("notifications").upsert(
+            {"message_id": message_id, "source": source, "external_id": external_id},
+            on_conflict="message_id",
+        ).execute()
+
+    def listing_for_message(self, message_id: int) -> tuple[str, str] | None:
+        resp = (
+            self.client.table("notifications")
+            .select("source, external_id").eq("message_id", message_id).limit(1).execute()
+        )
+        rows = resp.data or []
+        return (rows[0]["source"], rows[0]["external_id"]) if rows else None
+
+    def save_feedback(self, source: str, external_id: str, reaction) -> None:
+        self.client.table("feedback").insert({
+            "source": source, "external_id": external_id,
+            "sentiment": reaction.sentiment, "emoji": reaction.emoji,
+            "update_id": reaction.update_id,
+        }).execute()
+
+    def get_state(self, key: str, default: str = "") -> str:
+        resp = self.client.table("bot_state").select("value").eq("key", key).limit(1).execute()
+        rows = resp.data or []
+        return rows[0]["value"] if rows else default
+
+    def set_state(self, key: str, value: str) -> None:
+        self.client.table("bot_state").upsert(
+            {"key": key, "value": value}, on_conflict="key"
+        ).execute()
+
+    def preference_signal(self):
+        """Aggregate stored feedback into a PreferenceSignal, keyed by the listing's district."""
+        from apartment_agent.feedback import summarize_by_district
+
+        fb = (self.client.table("feedback").select("source, external_id, sentiment").execute().data
+              or [])
+        if not fb:
+            return summarize_by_district([])
+        # resolve each reaction's district via the listing row
+        districts: dict[tuple[str, str], str] = {}
+        for source in {f["source"] for f in fb}:
+            ids = [f["external_id"] for f in fb if f["source"] == source]
+            rows = (
+                self.client.table(TABLE).select("external_id, district, city")
+                .eq("source", source).in_("external_id", ids).execute().data or []
+            )
+            for r in rows:
+                districts[(source, r["external_id"])] = r.get("district") or r.get("city") or ""
+        pairs = [
+            (districts.get((f["source"], f["external_id"]), ""), int(f["sentiment"])) for f in fb
+        ]
+        return summarize_by_district(pairs)
+
     def mark_notified(self, source: str, external_ids: list[str]) -> None:
         if not external_ids:
             return

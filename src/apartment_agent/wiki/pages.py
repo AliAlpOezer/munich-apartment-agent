@@ -165,11 +165,26 @@ def render_market_overview(
     return "\n\n".join(parts)
 
 
-def render_preferences(cfg: FilterConfig, *, updated: date) -> str:
-    """The search intent, rendered straight from FilterConfig — the 'schema of desires'.
+def _learned_section(signal) -> str:
+    """Render the feedback-learned like/dislike signal (or a placeholder when there's none)."""
+    if signal is None or signal.is_empty:
+        return section("auto", "learned", "_no reactions yet — 👍 / 👎 a listing in Telegram_")
+    def fmt(scores: dict[str, int]) -> str:
+        ranked = sorted(scores.items(), key=lambda kv: abs(kv[1]), reverse=True)
+        return ", ".join(f"{d} ({n:+d})" for d, n in ranked) or "—"
+    lines = [
+        f"- 👍 leaning toward: {fmt(signal.liked)}" if signal.liked else "- 👍 leaning toward: —",
+        f"- 👎 cooling on: {fmt(signal.disliked)}" if signal.disliked else "- 👎 cooling on: —",
+        f"- ({signal.total_reactions} reaction(s) so far)",
+    ]
+    return section("auto", "learned", "\n".join(lines))
 
-    Fully deterministic for now; a future feedback loop (Telegram 👍/👎) can layer a learned
-    `llm:synthesis` section on top without changing this skeleton.
+
+def render_preferences(cfg: FilterConfig, *, updated: date, signal=None) -> str:
+    """The search intent, rendered from FilterConfig plus the feedback-learned signal.
+
+    `signal` is an optional `feedback.PreferenceSignal`; when present, a learned like/dislike
+    section is rendered beneath the hard filters — the procedural-memory slice of the wiki.
     """
     types = ", ".join(sorted(t.value for t in cfg.listing_types)) or "—"
     areas = ", ".join(cfg.allowed_locations[:6]) + (
@@ -187,7 +202,8 @@ def render_preferences(cfg: FilterConfig, *, updated: date) -> str:
     table = "| preference | value |\n|---|---|\n" + "\n".join(f"| {k} | {v} |" for k, v in rows)
     parts = [
         _header("🎯", "Search preferences", "preferences", "what a good match looks like", updated),
-        section("auto", "filters", table),
+        "## Hard filters\n" + section("auto", "filters", table),
+        "## Learned from your reactions\n" + _learned_section(signal),
         "## See also\n" + _links_section(["market-overview"]),
     ]
     return "\n\n".join(parts)

@@ -55,3 +55,28 @@ create table if not exists runs (
 );
 
 create index if not exists runs_created_idx on runs (created_at desc);
+
+-- Human-in-the-loop feedback: which notified message maps to which listing, and the 👍/👎 on it.
+create table if not exists notifications (
+    message_id    bigint      primary key,        -- Telegram message id
+    source        text        not null,
+    external_id   text        not null,
+    sent_at       timestamptz not null default now()
+);
+
+create table if not exists feedback (
+    id            bigint generated always as identity primary key,
+    source        text        not null,
+    external_id   text        not null,
+    sentiment     int         not null,           -- +1 like, -1 dislike
+    emoji         text,
+    update_id     bigint,
+    created_at    timestamptz not null default now()
+);
+create index if not exists feedback_listing_idx on feedback (source, external_id);
+
+-- Tiny key/value store (e.g. the Telegram getUpdates offset).
+create table if not exists bot_state (
+    key   text primary key,
+    value text not null
+);

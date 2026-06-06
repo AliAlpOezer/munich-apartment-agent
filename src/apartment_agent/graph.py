@@ -249,12 +249,16 @@ def build_graph(deps: Deps, checkpointer=None):
         if deps.wiki is None or not new:
             return {}
         try:
+            signal = None
             if deps.db is not None and not deps.settings.dry_run:
                 corpus = deps.db.all_listings()  # includes the rows just persisted
+                if deps.settings.enable_feedback:
+                    signal = deps.db.preference_signal()
             else:
                 corpus = list(new)
             deps.wiki.ingest(
-                corpus, new, filter_cfg=deps.filter_cfg, updated=datetime.now(UTC).date()
+                corpus, new, filter_cfg=deps.filter_cfg,
+                updated=datetime.now(UTC).date(), signal=signal,
             )
         except Exception as e:  # noqa: BLE001
             state["result"].errors.append(f"wiki: {e}")
@@ -267,7 +271,15 @@ def build_graph(deps: Deps, checkpointer=None):
         if deps.settings.dry_run or not deps.notifier or not new:
             return {}
         try:
-            result.notified = deps.notifier.send_digest(new)
+            # With feedback enabled, send one message per listing and record message→listing so
+            # 👍/👎 reactions can be mapped back; otherwise send the compact digest.
+            if deps.settings.enable_feedback and deps.db is not None:
+                sent = deps.notifier.send_per_listing(new)
+                for listing, message_id in sent:
+                    deps.db.record_notification(message_id, listing.source, listing.external_id)
+                result.notified = len(sent)
+            else:
+                result.notified = deps.notifier.send_digest(new)
             if deps.db is not None:
                 by_source: dict[str, list[str]] = defaultdict(list)
                 for x in new:

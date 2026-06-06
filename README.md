@@ -67,7 +67,9 @@ cp .env.example .env               # then fill in keys
 python -m apartment_agent.main --dry-run   # live scrape + filter, NO db/telegram, prints matches
 python -m apartment_agent.main             # full run: dedup, enrich, persist, wiki, notify
 python -m apartment_agent.main --lint      # health-check the knowledge wiki, write lint-report
-pytest                                     # unit tests (filter, parser, wiki), no creds needed
+python -m apartment_agent.main --sync-feedback   # pull Telegram 👍/👎 into learned preferences
+python -m apartment_agent.evals.harness    # run fit-score evals against the live LLM tiers
+pytest                                     # unit tests (no creds); RUN_LIVE_EVALS=1 adds a live eval
 ```
 
 ## Deploy (every 3 hours)

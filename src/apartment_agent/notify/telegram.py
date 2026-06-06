@@ -9,7 +9,7 @@ from apartment_agent.models import Listing
 
 log = logging.getLogger(__name__)
 
-_API = "https://api.telegram.org/bot{token}/sendMessage"
+_API = "https://api.telegram.org/bot{token}/{method}"
 _TG_LIMIT = 4096
 
 
@@ -64,11 +64,12 @@ class TelegramNotifier:
         self.bot_token = bot_token
         self.chat_id = chat_id
 
-    def send(self, text: str) -> None:
+    def send(self, text: str) -> int | None:
+        """Send one HTML message; returns the Telegram message_id (for feedback mapping)."""
         import httpx  # lazy
 
         resp = httpx.post(
-            _API.format(token=self.bot_token),
+            _API.format(token=self.bot_token, method="sendMessage"),
             json={
                 "chat_id": self.chat_id,
                 "text": text,
@@ -78,6 +79,7 @@ class TelegramNotifier:
             timeout=20,
         )
         resp.raise_for_status()
+        return (resp.json().get("result") or {}).get("message_id")
 
     def send_digest(self, listings: list[Listing]) -> int:
         sent = 0
@@ -85,3 +87,31 @@ class TelegramNotifier:
             self.send(message)
             sent += 1
         return sent
+
+    def send_per_listing(self, listings: list[Listing]) -> list[tuple[Listing, int]]:
+        """Send one message per listing so each carries its own message_id for 👍/👎 feedback.
+
+        Returns (listing, message_id) for messages that came back with an id.
+        """
+        out: list[tuple[Listing, int]] = []
+        for x in listings:
+            mid = self.send(format_listing(x))
+            if mid is not None:
+                out.append((x, mid))
+        return out
+
+    def get_updates(self, offset: int, *, timeout: int = 0) -> list[dict]:
+        """Telegram getUpdates, requesting message-reaction updates. Returns the raw result list."""
+        import httpx  # lazy
+
+        resp = httpx.post(
+            _API.format(token=self.bot_token, method="getUpdates"),
+            json={
+                "offset": offset,
+                "timeout": timeout,
+                "allowed_updates": ["message_reaction"],
+            },
+            timeout=timeout + 20,
+        )
+        resp.raise_for_status()
+        return resp.json().get("result") or []

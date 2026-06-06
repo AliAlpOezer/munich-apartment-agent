@@ -61,6 +61,9 @@ class Settings(BaseSettings):
     detail_concurrency: int = 3
     enable_llm_enrich: bool = True
     enable_wiki: bool = True
+    # Human-in-the-loop: send one message per listing so 👍/👎 reactions map to a listing, sync them
+    # with `--sync-feedback`, and fold the learned signal into the wiki preferences page.
+    enable_feedback: bool = True
     # Durable execution: persist graph state per super-step so an interrupted run resumes.
     enable_checkpointing: bool = True
     checkpoint_db: str = "agent_state.sqlite"

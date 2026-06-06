@@ -94,10 +94,39 @@ def _run_lint(settings) -> int:
     return 0
 
 
+def _run_sync_feedback(settings) -> int:
+    """Pull Telegram 👍/👎 reactions, store them mapped to their listing, advance the offset."""
+    configured = (
+        settings.telegram_bot_token and settings.supabase_url and settings.supabase_service_key
+    )
+    if not configured:
+        print("sync-feedback needs Telegram + Supabase configured")
+        return 1
+    from apartment_agent.db.supabase_client import ListingsDB
+    from apartment_agent.feedback import sync_feedback
+    from apartment_agent.notify.telegram import TelegramNotifier
+
+    db = ListingsDB(settings.supabase_url, settings.supabase_service_key)
+    tg = TelegramNotifier(settings.telegram_bot_token, settings.telegram_chat_id)
+
+    saved = sync_feedback(
+        fetch_updates=lambda offset: tg.get_updates(offset),
+        resolve_listing=db.listing_for_message,
+        save_feedback=db.save_feedback,
+        offset_get=lambda: int(db.get_state("tg_offset", "0") or 0),
+        offset_set=lambda v: db.set_state("tg_offset", str(v)),
+    )
+    log.info("synced %d feedback reaction(s)", saved)
+    print(f"synced {saved} reaction(s)")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Munich apartment-hunter agent")
     parser.add_argument("--dry-run", action="store_true", help="no DB writes / no Telegram")
     parser.add_argument("--lint", action="store_true", help="health-check the wiki and exit")
+    parser.add_argument("--sync-feedback", action="store_true",
+                        help="pull Telegram reactions into stored feedback and exit")
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args(argv)
 
@@ -111,6 +140,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.lint:
         return _run_lint(settings)
+    if args.sync_feedback:
+        return _run_sync_feedback(settings)
 
     deps = _build_deps(settings)
     result = RunResult(started_at=datetime.now(UTC))

@@ -14,7 +14,7 @@ item lands.
 | 3 | Observability (run metrics + tracing) | ✅ done |
 | 4 | Structured output + confidence escalation (C2) | ✅ done |
 | 5 | Retries/backoff + prompt-injection hygiene | ✅ done |
-| 6 | Human-in-the-loop feedback loop | ⏳ planned |
+| 6 | Human-in-the-loop feedback loop | ✅ done |
 | 7 | Bounded-concurrency fan-out | ✅ done |
 
 ## What's already aligned with modern practice
@@ -65,10 +65,13 @@ never instructions; `fit_score` stays range-clamped. Retries skip permanent 4xx 
 (`is_transient`) — e.g. a free model's "response_format unavailable" 400 fails fast so the router
 escalates instead of retrying a hopeless call (a flaw the live eval surfaced).
 
-### 6. Human-in-the-loop feedback loop — ⏳
+### 6. Human-in-the-loop feedback loop — ✅
 **Convention.** HITL feedback becomes procedural memory that tunes the agent.
-**Plan.** Sync Telegram 👍/👎 reactions (`--sync-feedback`), store them, and fold them into the wiki
-`preferences` page so the search intent learns over time.
+**Implemented.** With `ENABLE_FEEDBACK`, notifications are sent one-per-listing and each message→
+listing mapping is stored (`notifications` table). `--sync-feedback` pulls Telegram reactions
+(`feedback.sync_feedback`, all I/O injected → unit-tested), stores them (`feedback` table), and the
+aggregated `PreferenceSignal` (by district) is folded into the wiki `preferences` page's learned
+section on each ingest — the procedural-memory slice of the wiki.
 
 ### 7. Bounded-concurrency fan-out — ✅
 **Convention.** Concurrent fan-out for I/O-bound steps, bounded to stay polite.

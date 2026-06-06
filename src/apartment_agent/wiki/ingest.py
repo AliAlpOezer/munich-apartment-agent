@@ -81,6 +81,7 @@ class WikiIngestor:
         *,
         filter_cfg: FilterConfig,
         updated: date,
+        signal=None,
     ) -> list[str]:
         """Update the wiki for this run. Returns the slugs that were written."""
         by_slug: dict[str, list[Listing]] = {}
@@ -140,8 +141,10 @@ class WikiIngestor:
             self.store.write("market-overview", page)
             written.append("market-overview")
 
-        # 3. preferences (deterministic; refresh so it tracks config drift)
-        self.store.write("preferences", pages.render_preferences(filter_cfg, updated=updated))
+        # 3. preferences (deterministic; refresh so it tracks config drift + learned feedback)
+        self.store.write(
+            "preferences", pages.render_preferences(filter_cfg, updated=updated, signal=signal)
+        )
         written.append("preferences")
 
         log.info("wiki ingest updated %d page(s): %s", len(written), ", ".join(written))
