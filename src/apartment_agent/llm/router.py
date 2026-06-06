@@ -13,6 +13,7 @@ graph needs neither keys nor network.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from enum import IntEnum
 
 from pydantic import BaseModel
@@ -89,17 +90,34 @@ class ModelRouter:
 
     # -- public API ----------------------------------------------------------
     def complete(
-        self, system: str, user: str, *, tier: Tier = Tier.CHEAP, max_tier: Tier = Tier.HARD
+        self,
+        system: str,
+        user: str,
+        *,
+        tier: Tier = Tier.CHEAP,
+        max_tier: Tier = Tier.HARD,
+        accept: Callable[[str], bool] | None = None,
     ) -> str:
+        """Try tiers low→high. `accept` (optional) decides if a *successful* result is good enough;
+        if it returns False the call escalates to the next tier (confidence-driven routing). If no
+        result is ever accepted, the last successful one is returned as a best effort."""
         messages = [("system", system), ("human", user)]
         last_err: Exception | None = None
+        last_ok: str | None = None
         for provider, model_id in self._candidates(tier, max_tier):
             try:
                 resp = self._make(provider, model_id).invoke(messages)
-                return resp.content if hasattr(resp, "content") else str(resp)
+                content = resp.content if hasattr(resp, "content") else str(resp)
             except Exception as e:  # noqa: BLE001 - rotate/escalate on any failure
                 last_err = e
                 log.warning("LLM call failed on %s/%s: %s", provider, model_id, e)
+                continue
+            if accept is None or accept(content):
+                return content
+            last_ok = content
+            log.info("result from %s/%s below acceptance threshold; escalating", provider, model_id)
+        if last_ok is not None:
+            return last_ok
         raise RuntimeError(f"all tiers {tier}..{max_tier} failed") from last_err
 
     def structured(
@@ -110,14 +128,24 @@ class ModelRouter:
         *,
         tier: Tier = Tier.MEDIUM,
         max_tier: Tier = Tier.HARD,
+        accept: Callable[[BaseModel], bool] | None = None,
     ) -> BaseModel:
+        """As `complete`, but returns a validated `schema` instance via structured output."""
         messages = [("system", system), ("human", user)]
         last_err: Exception | None = None
+        last_ok: BaseModel | None = None
         for provider, model_id in self._candidates(tier, max_tier):
             try:
                 model = self._make(provider, model_id).with_structured_output(schema)
-                return model.invoke(messages)
+                result = model.invoke(messages)
             except Exception as e:  # noqa: BLE001
                 last_err = e
                 log.warning("structured LLM call failed on %s/%s: %s", provider, model_id, e)
+                continue
+            if accept is None or accept(result):
+                return result
+            last_ok = result
+            log.info("structured result from %s/%s below threshold; escalating", provider, model_id)
+        if last_ok is not None:
+            return last_ok
         raise RuntimeError(f"structured: all tiers {tier}..{max_tier} failed") from last_err

@@ -20,6 +20,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TypedDict
 
+from pydantic import BaseModel
+
 from apartment_agent.config import Settings
 from apartment_agent.db.supabase_client import ListingsDB
 from apartment_agent.llm.router import ModelRouter, Tier
@@ -55,22 +57,72 @@ _ENRICH_SYSTEM = (
     "You help someone relocating to Munich pick rentals. They want an affordable place "
     "(warm rent <= 700€), at least 12 m², available around 1 October 2026, in Munich or a "
     "commutable suburb. Rate how well a listing fits (0-100, weighing price, size, location, "
-    "timing) and summarize it in one sentence highlighting the standout pro or con. "
-    'Respond with ONLY a JSON object: {"fit_score": <int 0-100>, "summary": "<one sentence>"}. '
-    "No markdown, no preamble."
+    "timing) and summarize it in one sentence highlighting the standout pro or con. Also report "
+    "your confidence (0.0-1.0) in the rating given how complete the listing data is. "
+    'Respond with ONLY a JSON object: {"fit_score": <int 0-100>, "summary": "<one sentence>", '
+    '"confidence": <float 0-1>}. No markdown, no preamble.'
 )
+
+# Below this confidence, escalate the assessment to a stronger tier rather than accept it.
+_MIN_CONFIDENCE = 0.5
 
 # Tolerant extraction: free/reasoning models often wrap the JSON in prose or <think> blocks.
 _JSON_RE = re.compile(r'\{[^{}]*"fit_score"[^{}]*\}', re.S)
 
 
-def _parse_assessment(text: str) -> tuple[int, str]:
+class Assessment(BaseModel):
+    """Structured fit assessment (tool-calling path); also the shape parsed from free-text JSON."""
+
+    fit_score: int
+    summary: str = ""
+    confidence: float | None = None
+
+
+def _parse_assessment(text: str) -> Assessment:
     match = _JSON_RE.search(text) or re.search(r"\{.*\}", text, re.S)
     if not match:
         raise ValueError(f"no JSON in response: {text[:120]!r}")
     data = json.loads(match.group(0))
-    score = max(0, min(100, int(data["fit_score"])))
-    return score, str(data.get("summary", "")).strip()
+    conf = data.get("confidence")
+    return Assessment(
+        fit_score=max(0, min(100, int(data["fit_score"]))),
+        summary=str(data.get("summary", "")).strip(),
+        confidence=float(conf) if conf is not None else None,
+    )
+
+
+def _confident(a: Assessment) -> bool:
+    """Accept predicate: unknown confidence is accepted (don't burn higher tiers needlessly)."""
+    return a.confidence is None or a.confidence >= _MIN_CONFIDENCE
+
+
+def assess_listing(router: ModelRouter, x: Listing) -> Assessment:
+    """Score one listing: structured output first (escalating on low confidence), regex JSON
+    fallback for free models that can't tool-call."""
+    user = _enrich_user(x)
+    try:
+        result = router.structured(
+            _ENRICH_SYSTEM, user, Assessment,
+            tier=Tier.CHEAP, max_tier=Tier.HARD, accept=_confident,
+        )
+        return Assessment(
+            fit_score=max(0, min(100, result.fit_score)),
+            summary=result.summary.strip(),
+            confidence=result.confidence,
+        )
+    except Exception:  # noqa: BLE001 - free models often lack tool-calling; fall back to text
+        text = router.complete(
+            _ENRICH_SYSTEM, user, tier=Tier.CHEAP, max_tier=Tier.HARD,
+            accept=lambda t: _confident_text(t),
+        )
+        return _parse_assessment(text)
+
+
+def _confident_text(text: str) -> bool:
+    try:
+        return _confident(_parse_assessment(text))
+    except Exception:  # noqa: BLE001 - unparseable: accept so we don't loop tiers forever
+        return True
 
 
 def _enrich_user(x: Listing) -> str:
@@ -156,10 +208,8 @@ def build_graph(deps: Deps, checkpointer=None):
             return {}
         for x in new:
             try:
-                text = deps.router.complete(
-                    _ENRICH_SYSTEM, _enrich_user(x), tier=Tier.CHEAP, max_tier=Tier.MEDIUM
-                )
-                x.fit_score, x.summary = _parse_assessment(text)
+                a = assess_listing(deps.router, x)
+                x.fit_score, x.summary = a.fit_score, a.summary
             except Exception as e:  # noqa: BLE001
                 state["result"].errors.append(f"enrich {x.external_id}: {e}")
         new.sort(key=lambda x: (x.fit_score if x.fit_score is not None else -1), reverse=True)

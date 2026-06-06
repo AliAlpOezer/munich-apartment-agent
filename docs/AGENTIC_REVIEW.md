@@ -12,7 +12,7 @@ item lands.
 | 1 | Durable execution / checkpointing | ✅ done |
 | 2 | Evals (golden set + LLM-as-judge) | ⏳ planned |
 | 3 | Observability (run metrics + tracing) | ⏳ planned |
-| 4 | Structured output + confidence escalation (C2) | ⏳ planned |
+| 4 | Structured output + confidence escalation (C2) | ✅ done |
 | 5 | Retries/backoff + prompt-injection hygiene | ⏳ planned |
 | 6 | Human-in-the-loop feedback loop | ⏳ planned |
 | 7 | Bounded-concurrency fan-out | ⏳ planned |
@@ -46,12 +46,13 @@ latency, cost; run metrics persisted for trend analysis.
 **Plan.** Capture per-node timings + token usage on `RunResult` and persist to a `runs` table; enable
 LangSmith tracing via env (`LANGCHAIN_TRACING_V2`). Run history also feeds the wiki and the frontend.
 
-### 4. Structured output + confidence escalation (was C2) — ⏳
+### 4. Structured output + confidence escalation (was C2) — ✅
 **Convention.** Provider-native structured output / constrained decoding over regex-scraped JSON; and
 difficulty-aware escalation, not failure-only.
-**Plan.** Make `enrich` use `router.structured()` with a regex fallback for free models that can't
-tool-call; let the router escalate on an `accept`/confidence predicate so a low-confidence cheap
-result escalates a tier instead of being accepted.
+**Implemented.** `complete()`/`structured()` take an `accept` predicate; a result that fails it
+escalates to the next tier (and the last result is returned as a best effort if none pass).
+`assess_listing` tries `router.structured(Assessment)` first and falls back to regex JSON for free
+models that can't tool-call; the `Assessment.confidence` field drives escalation below `0.5`.
 
 ### 5. Retries/backoff + prompt-injection hygiene — ⏳
 **Convention.** Wrap flaky external calls in retry-with-jitter; treat scraped text as untrusted input.
