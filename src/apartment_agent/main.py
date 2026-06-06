@@ -62,7 +62,7 @@ def _print_dry_run(state) -> None:
     new = state.get("new", [])
     print(f"\n=== DRY RUN: {len(new)} listing(s) passed the filter ===")
     for x in new:
-        price = f"{x.price_warm:.0f}€" if x.price_warm is not None else "?€"
+        price = f"{x.effective_warm_rent:.0f}€" if x.effective_warm_rent is not None else "?€"
         size = f"{x.size_sqm:.0f}m²" if x.size_sqm is not None else "?m²"
         print(f"  [{x.listing_type.value:9s}] {price:>6} {size:>6}  "
               f"{x.city}/{x.district}  ab {x.available_from}  {x.url}")

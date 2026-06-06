@@ -28,6 +28,10 @@ class Listing(BaseModel):
 
     price_warm: float | None = None               # Warmmiete (incl. utilities), EUR/month
     price_cold: float | None = None               # Kaltmiete (excl. utilities), EUR/month
+    # The single figure shown on a search-result card. Its basis is ambiguous (often Kaltmiete),
+    # so it is kept distinct from warm/cold and used only as a permissive pre-filter proxy until
+    # the detail page resolves the real warm/cold split. Transient: not persisted to the DB.
+    price_listed: float | None = None
     size_sqm: float | None = None
     rooms: float | None = None
     listing_type: ListingType = ListingType.UNKNOWN
@@ -51,10 +55,15 @@ class Listing(BaseModel):
     def effective_warm_rent(self) -> float | None:
         """Best available figure to compare against the warm-rent cap.
 
-        Prefer Warmmiete; fall back to Kaltmiete only when warm is unknown
-        (Warmmiete >= Kaltmiete, so this is a permissive lower bound).
+        Prefer the resolved Warmmiete; fall back to Kaltmiete, then to the ambiguous list-card
+        figure. Both fallbacks are permissive lower bounds (Warmmiete >= Kaltmiete, and the listed
+        figure is usually Kaltmiete), so a too-low pre-filter is corrected once the detail page
+        populates `price_warm`.
         """
-        return self.price_warm if self.price_warm is not None else self.price_cold
+        for value in (self.price_warm, self.price_cold, self.price_listed):
+            if value is not None:
+                return value
+        return None
 
 
 class FilterConfig(BaseModel):

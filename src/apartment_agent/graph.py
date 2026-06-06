@@ -1,12 +1,13 @@
 """LangGraph orchestration.
 
-    START → scrape → filter → dedup ──(new?)──► enrich → persist → wiki → notify → END
-                                     └────(none)────────────────────────────────► END
+    START → scrape → filter → dedup ─(new?)─► detail → enrich → persist → wiki → notify → END
+                                     └─(none)──────────────────────────────────────────► END
 
 Node logic lives here as closures over `Deps`; the pure filter logic stays in
-nodes/filter.py. The LLM is used in `enrich` (fit-ranking) and `wiki` (synthesis prose), escalating
-per the ModelRouter; everything else — parsing, filtering, dedup, wiki stats — is deterministic.
-The `wiki` node is the *Ingest* operation of the knowledge wiki (see WIKI_SCHEMA.md).
+nodes/filter.py. `detail` fetches each new listing's page to resolve the real warm/cold rent and
+re-applies the filter. The LLM is used in `enrich` (fit-ranking) and `wiki` (synthesis prose),
+escalating per the ModelRouter; everything else — parsing, filtering, dedup, wiki stats — is
+deterministic. The `wiki` node is the *Ingest* operation of the knowledge wiki (see WIKI_SCHEMA.md).
 """
 
 from __future__ import annotations
@@ -23,7 +24,7 @@ from apartment_agent.config import Settings
 from apartment_agent.db.supabase_client import ListingsDB
 from apartment_agent.llm.router import ModelRouter, Tier
 from apartment_agent.models import FilterConfig, Listing, RunResult
-from apartment_agent.nodes.filter import filter_listings
+from apartment_agent.nodes.filter import filter_listings, passes_filter
 from apartment_agent.notify.telegram import TelegramNotifier
 from apartment_agent.sources.base import SourceAdapter
 from apartment_agent.wiki.ingest import WikiIngestor
@@ -120,6 +121,35 @@ def build_graph(deps: Deps):
         log.info("%d new listings", len(new))
         return {"new": new}
 
+    def detail(state: AgentState) -> dict:
+        """Resolve true warm/cold rent for new listings, then re-apply the filter.
+
+        The list-level filter ran on the ambiguous card figure; once the detail page gives the real
+        Warmmiete, drop anything whose warm rent actually exceeds the cap.
+        """
+        new = state.get("new", [])
+        if not deps.settings.enable_detail_fetch or not new:
+            return {}
+        by_name = {a.name: a for a in deps.adapters}
+        kept: list[Listing] = []
+        for x in new:
+            adapter = by_name.get(x.source)
+            if adapter is not None:
+                try:
+                    adapter.fetch_costs(x)
+                except Exception as e:  # noqa: BLE001 - keep the listed figure on any failure
+                    state["result"].errors.append(f"detail {x.external_id}: {e}")
+            ok, reasons = passes_filter(x, deps.filter_cfg)
+            if ok:
+                kept.append(x)
+            else:
+                log.info("dropped after detail fetch: %s (%s)", x.external_id, "; ".join(reasons))
+        dropped = len(new) - len(kept)
+        if dropped:
+            log.info("detail re-filter dropped %d of %d new listing(s)", dropped, len(new))
+        state["result"].new = len(kept)
+        return {"new": kept}
+
     def enrich(state: AgentState) -> dict:
         new = state.get("new", [])
         if not (deps.settings.enable_llm_enrich and deps.router and not deps.settings.dry_run):
@@ -180,20 +210,21 @@ def build_graph(deps: Deps):
         return {}
 
     def route_after_dedup(state: AgentState) -> str:
-        return "enrich" if state.get("new") else "END"
+        return "detail" if state.get("new") else "END"
 
     from langgraph.graph import END, START, StateGraph
 
     g = StateGraph(AgentState)
     for name, fn in [
-        ("scrape", scrape), ("filter", filter_node), ("dedup", dedup),
+        ("scrape", scrape), ("filter", filter_node), ("dedup", dedup), ("detail", detail),
         ("enrich", enrich), ("persist", persist), ("wiki", wiki), ("notify", notify),
     ]:
         g.add_node(name, fn)
     g.add_edge(START, "scrape")
     g.add_edge("scrape", "filter")
     g.add_edge("filter", "dedup")
-    g.add_conditional_edges("dedup", route_after_dedup, {"enrich": "enrich", "END": END})
+    g.add_conditional_edges("dedup", route_after_dedup, {"detail": "detail", "END": END})
+    g.add_edge("detail", "enrich")
     g.add_edge("enrich", "persist")
     g.add_edge("persist", "wiki")
     g.add_edge("wiki", "notify")

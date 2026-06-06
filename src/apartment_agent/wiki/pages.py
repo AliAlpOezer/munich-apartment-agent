@@ -61,7 +61,7 @@ def _median(values: list[float]) -> float | None:
 def listing_line(x: Listing) -> str:
     """One listing as a markdown bullet for a 'recent matches' section."""
     title = x.title or "(no title)"
-    bits = [_eur(x.price_warm), _sqm(x.size_sqm), x.listing_type.value]
+    bits = [_eur(x.effective_warm_rent), _sqm(x.size_sqm), x.listing_type.value]
     if x.available_from:
         bits.append(f"ab {x.available_from.isoformat()}")
     if x.fit_score is not None:
@@ -72,7 +72,7 @@ def listing_line(x: Listing) -> str:
 # --- stats ------------------------------------------------------------------
 def stats_table(listings: list[Listing]) -> str:
     """Deterministic stats over a set of listings, as a markdown table."""
-    warm = [x.price_warm for x in listings if x.price_warm is not None]
+    warm = [x.effective_warm_rent for x in listings if x.effective_warm_rent is not None]
     sizes = [x.size_sqm for x in listings if x.size_sqm is not None]
     types: dict[str, int] = {}
     for x in listings:
@@ -147,7 +147,7 @@ def render_market_overview(
     if breakdown_rows:
         lines = ["| district | listings | median warm |", "|---|---|---|"]
         for name, items in breakdown_rows:
-            warm = [x.price_warm for x in items if x.price_warm is not None]
+            warm = [x.effective_warm_rent for x in items if x.effective_warm_rent is not None]
             lines.append(f"| {name} | {len(items)} | {_eur(_median(warm))} |")
         breakdown = "\n".join(lines)
     else:

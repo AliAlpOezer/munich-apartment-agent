@@ -11,6 +11,7 @@ from apartment_agent.sources.wg_gesucht import (
     _parse_dates,
     _split_detail,
     _to_float,
+    parse_detail_costs,
 )
 
 FIXTURE = pathlib.Path(__file__).parent / "fixtures" / "wg_sample.html"
@@ -48,7 +49,9 @@ def test_parse_sample():
 
     a = by_id["1000001"]
     assert a.listing_type is ListingType.WG_ROOM
-    assert a.price_warm == 650.0 and a.size_sqm == 18.0
+    # the list card's single figure is kept as the ambiguous-basis `price_listed`,
+    # not assumed to be Warmmiete (fetch_costs resolves warm/cold from the detail page)
+    assert a.price_listed == 650.0 and a.price_warm is None and a.size_sqm == 18.0
     assert a.city == "München" and a.district == "Schwabing"
     assert a.address == "Amalienstraße"
     assert a.available_from == date(2026, 11, 1) and a.available_to is None
@@ -57,13 +60,42 @@ def test_parse_sample():
 
     b = by_id["1000002"]
     assert b.listing_type is ListingType.APARTMENT
-    assert b.price_warm == 700.0 and b.size_sqm == 30.5
+    assert b.price_listed == 700.0 and b.size_sqm == 30.5
     assert b.available_from == date(2026, 9, 15) and b.available_to == date(2026, 12, 31)
 
     c = by_id["1000003"]
     assert c.listing_type is ListingType.WG_ROOM
-    assert c.price_warm == 1200.0 and c.size_sqm == 25.0
+    assert c.price_listed == 1200.0 and c.size_sqm == 25.0
     assert c.available_from is None and c.available_to is None
+
+
+# --- detail-page cost parsing ---
+def test_parse_detail_costs_explicit_warm():
+    html = """
+    <table>
+      <tr><td>Kaltmiete:</td><td>450 €</td></tr>
+      <tr><td>Nebenkosten:</td><td>120 €</td></tr>
+      <tr><td>GESAMTMIETE:</td><td>600 €</td></tr>
+      <tr><td>Kaution:</td><td>900 €</td></tr>
+    </table>
+    """
+    warm, cold = parse_detail_costs(html)
+    assert warm == 600.0 and cold == 450.0  # explicit Gesamtmiete wins; Kaution ignored
+
+
+def test_parse_detail_costs_derives_warm_from_extras():
+    # no explicit Warmmiete -> warm = Kaltmiete + Nebenkosten + Heizkosten
+    html = """
+    <div class="row"><div>Miete</div><div>500 €</div></div>
+    <div class="row"><div>Nebenkosten</div><div>80 €</div></div>
+    <div class="row"><div>Heizkosten</div><div>40 €</div></div>
+    """
+    warm, cold = parse_detail_costs(html)
+    assert cold == 500.0 and warm == 620.0
+
+
+def test_parse_detail_costs_no_rows():
+    assert parse_detail_costs("<html><body>no costs here</body></html>") == (None, None)
 
 
 def test_build_search_urls():

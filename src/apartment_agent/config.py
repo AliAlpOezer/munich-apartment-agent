@@ -54,6 +54,9 @@ class Settings(BaseSettings):
 
     # --- Behavior ---
     dry_run: bool = False
+    # Fetch each new listing's detail page to resolve the real warm/cold rent before the final
+    # filter (the list card only shows one ambiguous figure). Off -> filter on the listed figure.
+    enable_detail_fetch: bool = True
     enable_llm_enrich: bool = True
     enable_wiki: bool = True
     # Where the knowledge wiki is written. Gitignored so it survives `git reset --hard` redeploys.

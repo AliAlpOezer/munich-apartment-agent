@@ -25,6 +25,14 @@ class SourceAdapter(ABC):
     def parse(self, html: str) -> list[Listing]:
         """Parse one search-result page into normalized Listings."""
 
+    def fetch_costs(self, listing: Listing) -> None:
+        """Optionally resolve the warm/cold rent split from a listing's detail page (in-place).
+
+        Default no-op: sources whose list view already carries an accurate warm rent need not
+        implement this. Called only for new listings, so it stays low-volume.
+        """
+        return None
+
     def search(self, cfg: FilterConfig) -> list[Listing]:
         """Default orchestration: fetch every search URL and parse it.
 

@@ -16,7 +16,11 @@ _TG_LIMIT = 4096
 def _fmt_price(listing: Listing) -> str:
     warm = f"{listing.price_warm:.0f}€ warm" if listing.price_warm is not None else None
     cold = f"{listing.price_cold:.0f}€ kalt" if listing.price_cold is not None else None
-    return " / ".join(p for p in (warm, cold) if p) or "?€"
+    parts = " / ".join(p for p in (warm, cold) if p)
+    if parts:
+        return parts
+    # neither resolved (detail fetch off/failed) — show the ambiguous list figure
+    return f"{listing.price_listed:.0f}€" if listing.price_listed is not None else "?€"
 
 
 def format_listing(listing: Listing) -> str:

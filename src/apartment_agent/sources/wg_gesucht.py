@@ -116,9 +116,10 @@ def _parse_card(card: Node) -> Listing | None:
         external_id=ext_id,
         url=url,
         title=title or None,
-        # The list view shows a single "Miete"; treat it as the warm-rent proxy for
-        # filtering. The detail page (optional later fetch) carries the warm/cold split.
-        price_warm=price,
+        # The list card shows one figure of ambiguous basis (usually Kaltmiete). Keep it as
+        # `price_listed` for the permissive pre-filter; `fetch_costs` resolves warm/cold from the
+        # detail page before the final filter so the warm-rent cap isn't applied to a cold figure.
+        price_listed=price,
         size_sqm=size,
         listing_type=_type_from_href(href),
         city=city,
@@ -128,6 +129,63 @@ def _parse_card(card: Node) -> Listing | None:
         available_to=avail_to,
         raw={"list_price_text": price_text},
     )
+
+
+# --- detail-page cost parsing -----------------------------------------------
+# The detail page lists costs in label/value rows. We resolve the warm/cold split from them.
+# Specific labels are checked before the generic "miete" so "Gesamtmiete"/"Kaltmiete" aren't
+# misread as the base "Miete". Deposit ("Kaution") / buyout ("Ablöse") rows carry no rent label
+# and are ignored.
+_COST_LABELS: list[tuple[str, str]] = [
+    ("gesamtmiete", "warm"),
+    ("warmmiete", "warm"),
+    ("kaltmiete", "cold"),
+    ("nebenkosten", "extra"),
+    ("heizkosten", "extra"),
+    ("sonstige kosten", "extra"),
+    ("miete", "cold"),  # generic base rent — must stay last
+]
+
+
+def _classify_cost_row(text: str) -> str | None:
+    for label, key in _COST_LABELS:
+        if label in text:
+            return key
+    return None
+
+
+def parse_detail_costs(html: str) -> tuple[float | None, float | None]:
+    """Resolve (warm, cold) EUR/month from a WG-Gesucht detail page.
+
+    Reads the cost breakdown rows; if no explicit Warmmiete/Gesamtmiete is present, derives warm as
+    Kaltmiete + the extra-cost rows (Nebenkosten/Heizkosten/Sonstige). Returns (None, None) when no
+    cost rows are found, so the caller keeps the permissive list-card figure.
+    """
+    tree = HTMLParser(html)
+    warm: float | None = None
+    cold: float | None = None
+    extras = 0.0
+    seen_extra = False
+    for row in tree.css("tr, .row, li"):
+        text = row.text(strip=True).lower()
+        if "€" not in text and "eur" not in text:
+            continue
+        key = _classify_cost_row(text)
+        if key is None:
+            continue
+        value = _to_float(text)
+        if value is None:
+            continue
+        if key == "warm" and warm is None:
+            warm = value
+        elif key == "cold" and cold is None:
+            cold = value
+        elif key == "extra":
+            extras += value
+            seen_extra = True
+    if warm is None and cold is not None and seen_extra:
+        warm = cold + extras
+    return warm, cold
 
 
 class WgGesuchtAdapter(SourceAdapter):
@@ -184,3 +242,17 @@ class WgGesuchtAdapter(SourceAdapter):
             if listing is not None:
                 out.append(listing)
         return out
+
+    def fetch_costs(self, listing: Listing) -> None:
+        """Populate accurate `price_warm`/`price_cold` from the listing's detail page.
+
+        Best-effort and in-place: on any parse miss the listing keeps its list-card `price_listed`,
+        so the permissive pre-filter result still stands.
+        """
+        if not listing.url:
+            return
+        warm, cold = parse_detail_costs(self.fetch(listing.url))
+        if cold is not None:
+            listing.price_cold = cold
+        if warm is not None:
+            listing.price_warm = warm
