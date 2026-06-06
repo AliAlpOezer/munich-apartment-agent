@@ -21,6 +21,12 @@ debug_*.html
 playwright-report/
 .cache/
 
+# Runtime knowledge wiki (LLM-maintained output). Gitignored so it persists across
+# `git reset --hard` redeploys and never leaks listing data into the repo. The governing
+# WIKI_SCHEMA.md *is* tracked. Override the location with WIKI_DIR.
+# Anchored to the repo root so it never matches the source package src/apartment_agent/wiki/.
+/wiki/
+
 # Only the sanitized sample fixture is tracked; never commit raw scraped captures
 tests/fixtures/*
 !tests/fixtures/wg_sample.html

@@ -11,8 +11,8 @@ for the rare hard call — so you don't pay flagship prices to validate a JSON b
 ```
             systemd timer (every 3h, jittered)
                           │
-   START → scrape → filter → dedup ──(new?)──► enrich → persist → notify → END
-   (curl-cffi)   (warm≤700, (Supabase)        (LLM     (Supabase) (Telegram)
+   START → scrape → filter → dedup ──(new?)──► enrich → persist → wiki → notify → END
+   (curl-cffi)   (warm≤700, (Supabase)        (LLM     (Supabase) (synth) (Telegram)
                   size≥12,                     fit-rank)
                   Oct-2026,
                   Munich+belt)
@@ -26,6 +26,23 @@ for the rare hard call — so you don't pay flagship prices to validate a JSON b
   confidence or failure, with intra-tier rotation for rate-limited free models.
 - **Deterministic core, LLM at the edges** — parsing/filtering are pure and unit-tested; the LLM only
   ranks fit and writes one-line summaries, so the system is cheap, fast, and debuggable.
+- **A knowledge wiki, not just a feed** — instead of scoring each listing in isolation and forgetting
+  it, the agent maintains a synthesized, interlinked markdown wiki of the search (see below).
+
+## Knowledge wiki (the *LLM Wiki* pattern)
+Modelled on Karpathy's [*LLM Wiki*](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)
+idea: rather than re-deriving an answer from raw rows every time, the agent **incrementally maintains
+a persistent, interlinked markdown wiki** on top of the listings data. Three layers — raw sources
+(the `listings` table), the wiki (`WIKI_DIR`, default `./wiki`), and the schema
+([`WIKI_SCHEMA.md`](WIKI_SCHEMA.md)) — and three operations:
+- **Ingest** *(every run, in the `wiki` node)* — folds new listings into per-district pages and a
+  market overview. Stats/links are computed deterministically; a cheap-tier model writes only the
+  prose "market read", revising the prior text rather than restarting.
+- **Query** — you (and a future frontend) read the synthesized wiki, not the raw rows.
+- **Lint** *(`--lint`)* — health-checks the wiki for stale/orphan pages, gaps, and broken links.
+
+The runtime wiki is **gitignored** so it persists across `git reset --hard` redeploys and never leaks
+listing data into the repo; only the schema is tracked. Set `ENABLE_WIKI=false` to skip it.
 
 ## Filters (configurable in `.env`)
 - Warmmiete **≤ 700 €** (falls back to Kaltmiete when warm is unknown)
@@ -46,8 +63,9 @@ cp .env.example .env               # then fill in keys
 ## Run
 ```bash
 python -m apartment_agent.main --dry-run   # live scrape + filter, NO db/telegram, prints matches
-python -m apartment_agent.main             # full run: dedup, enrich, persist, notify
-pytest                                     # unit tests (filter + parser), no creds needed
+python -m apartment_agent.main             # full run: dedup, enrich, persist, wiki, notify
+python -m apartment_agent.main --lint      # health-check the knowledge wiki, write lint-report
+pytest                                     # unit tests (filter, parser, wiki), no creds needed
 ```
 
 ## Deploy (every 3 hours)

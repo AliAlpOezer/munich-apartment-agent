@@ -1,11 +1,12 @@
 """LangGraph orchestration.
 
-    START → scrape → filter → dedup ──(new?)──► enrich → persist → notify → END
-                                     └────(none)─────────────────────────► END
+    START → scrape → filter → dedup ──(new?)──► enrich → persist → wiki → notify → END
+                                     └────(none)────────────────────────────────► END
 
 Node logic lives here as closures over `Deps`; the pure filter logic stays in
-nodes/filter.py. The LLM is used only in `enrich` (fit-ranking) and escalates per the
-ModelRouter; everything else is deterministic.
+nodes/filter.py. The LLM is used in `enrich` (fit-ranking) and `wiki` (synthesis prose), escalating
+per the ModelRouter; everything else — parsing, filtering, dedup, wiki stats — is deterministic.
+The `wiki` node is the *Ingest* operation of the knowledge wiki (see WIKI_SCHEMA.md).
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ import logging
 import re
 from collections import defaultdict
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import TypedDict
 
 from apartment_agent.config import Settings
@@ -24,6 +26,7 @@ from apartment_agent.models import FilterConfig, Listing, RunResult
 from apartment_agent.nodes.filter import filter_listings
 from apartment_agent.notify.telegram import TelegramNotifier
 from apartment_agent.sources.base import SourceAdapter
+from apartment_agent.wiki.ingest import WikiIngestor
 
 log = logging.getLogger(__name__)
 
@@ -44,6 +47,7 @@ class Deps:
     router: ModelRouter | None = None
     db: ListingsDB | None = None
     notifier: TelegramNotifier | None = None
+    wiki: WikiIngestor | None = None
 
 
 _ENRICH_SYSTEM = (
@@ -140,6 +144,24 @@ def build_graph(deps: Deps):
             state["result"].errors.append(f"persist: {e}")
         return {}
 
+    def wiki(state: AgentState) -> dict:
+        """Ingest operation: fold the run's new listings into the knowledge wiki."""
+        new = state.get("new", [])
+        if deps.wiki is None or not new:
+            return {}
+        try:
+            if deps.db is not None and not deps.settings.dry_run:
+                corpus = deps.db.all_listings()  # includes the rows just persisted
+            else:
+                corpus = list(new)
+            deps.wiki.ingest(
+                corpus, new, filter_cfg=deps.filter_cfg, updated=datetime.now(UTC).date()
+            )
+        except Exception as e:  # noqa: BLE001
+            state["result"].errors.append(f"wiki: {e}")
+            log.exception("wiki ingest failed")
+        return {}
+
     def notify(state: AgentState) -> dict:
         new = state.get("new", [])
         result = state["result"]
@@ -165,7 +187,7 @@ def build_graph(deps: Deps):
     g = StateGraph(AgentState)
     for name, fn in [
         ("scrape", scrape), ("filter", filter_node), ("dedup", dedup),
-        ("enrich", enrich), ("persist", persist), ("notify", notify),
+        ("enrich", enrich), ("persist", persist), ("wiki", wiki), ("notify", notify),
     ]:
         g.add_node(name, fn)
     g.add_edge(START, "scrape")
@@ -173,6 +195,7 @@ def build_graph(deps: Deps):
     g.add_edge("filter", "dedup")
     g.add_conditional_edges("dedup", route_after_dedup, {"enrich": "enrich", "END": END})
     g.add_edge("enrich", "persist")
-    g.add_edge("persist", "notify")
+    g.add_edge("persist", "wiki")
+    g.add_edge("wiki", "notify")
     g.add_edge("notify", END)
     return g.compile()

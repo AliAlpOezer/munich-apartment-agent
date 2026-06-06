@@ -55,6 +55,9 @@ class Settings(BaseSettings):
     # --- Behavior ---
     dry_run: bool = False
     enable_llm_enrich: bool = True
+    enable_wiki: bool = True
+    # Where the knowledge wiki is written. Gitignored so it survives `git reset --hard` redeploys.
+    wiki_dir: str = "wiki"
     log_level: str = "INFO"
 
     @property

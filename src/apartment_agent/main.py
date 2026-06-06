@@ -40,6 +40,13 @@ def _build_deps(settings):
 
         notifier = TelegramNotifier(settings.telegram_bot_token, settings.telegram_chat_id)
 
+    wiki = None
+    if settings.enable_wiki:
+        from apartment_agent.wiki.ingest import WikiIngestor
+        from apartment_agent.wiki.store import FilesystemWikiStore
+
+        wiki = WikiIngestor(FilesystemWikiStore(settings.wiki_dir), router=router)
+
     return Deps(
         settings=settings,
         filter_cfg=settings.filter_config(),
@@ -47,6 +54,7 @@ def _build_deps(settings):
         router=router,
         db=db,
         notifier=notifier,
+        wiki=wiki,
     )
 
 
@@ -62,9 +70,34 @@ def _print_dry_run(state) -> None:
             print(f"      {x.title}")
 
 
+def _run_lint(settings) -> int:
+    """Lint operation: health-check the wiki, write the report page, print a summary."""
+    from datetime import UTC, datetime
+
+    from apartment_agent.wiki.lint import WikiLinter
+    from apartment_agent.wiki.store import FilesystemWikiStore
+
+    store = FilesystemWikiStore(settings.wiki_dir)
+    linter = WikiLinter(store)
+    corpus = None
+    if settings.supabase_url and settings.supabase_service_key:
+        from apartment_agent.db.supabase_client import ListingsDB
+
+        corpus = ListingsDB(settings.supabase_url, settings.supabase_service_key).all_listings()
+
+    today = datetime.now(UTC).date()
+    report = linter.lint(today=today, corpus=corpus)
+    store.write("lint-report", linter.render_report(report, today=today))
+    print(f"wiki lint: {report.checked} page(s) checked, {len(report.findings)} finding(s)")
+    for f in report.findings:
+        print(f"  [{f.kind}] {f.slug}: {f.message}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Munich apartment-hunter agent")
     parser.add_argument("--dry-run", action="store_true", help="no DB writes / no Telegram")
+    parser.add_argument("--lint", action="store_true", help="health-check the wiki and exit")
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args(argv)
 
@@ -75,6 +108,9 @@ def main(argv: list[str] | None = None) -> int:
         level=logging.DEBUG if args.verbose else getattr(logging, settings.log_level, logging.INFO),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
+
+    if args.lint:
+        return _run_lint(settings)
 
     deps = _build_deps(settings)
     graph = build_graph(deps)
