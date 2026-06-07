@@ -36,15 +36,16 @@ create table if not exists listings (
     unique (source, external_id)
 );
 
+-- Ensure new columns exist on a pre-existing `listings` table BEFORE any index references them
+-- (CREATE TABLE IF NOT EXISTS is a no-op when the table already exists, so it won't add them).
+alter table listings add column if not exists status text not null default 'new';
+alter table listings add column if not exists status_updated_at timestamptz;
+
 -- Fast "what's new / unnotified" lookups
 create index if not exists listings_notified_idx   on listings (notified_at);
 create index if not exists listings_first_seen_idx  on listings (first_seen_at desc);
 create index if not exists listings_fit_idx         on listings (fit_score desc);
 create index if not exists listings_status_idx       on listings (status);
-
--- For repos created before the status column existed:
-alter table listings add column if not exists status text not null default 'new';
-alter table listings add column if not exists status_updated_at timestamptz;
 
 -- Per-run metrics (observability / trend history; also feeds the wiki + frontend).
 create table if not exists runs (
