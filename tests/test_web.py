@@ -99,6 +99,26 @@ def test_status_endpoint_reports_run(client):
     assert body["agent"]["running"] is False
 
 
+def test_api_token_required_when_configured():
+    store = InMemoryStore(rows=[_row("1")])
+    runner = AgentRunner(settings=None, run_fn=lambda s: None)
+    c = TestClient(create_app(store, runner, api_token="secret"))
+
+    assert c.get("/api/listings").status_code == 401              # no token
+    assert c.get("/api/listings", headers={"X-API-Token": "nope"}).status_code == 401
+    ok = c.get("/api/listings", headers={"X-API-Token": "secret"})
+    assert ok.status_code == 200
+    assert c.post("/api/search", headers={"X-API-Token": "secret"}).json()["started"] is True
+    assert c.post("/api/search").status_code == 401               # mutating route also guarded
+
+
+def test_cors_header_present_for_allowed_origin():
+    c = TestClient(create_app(InMemoryStore(), AgentRunner(None, run_fn=lambda s: None),
+                              cors_origins=["https://me.github.io"]))
+    r = c.get("/api/status", headers={"Origin": "https://me.github.io"})
+    assert r.headers.get("access-control-allow-origin") == "https://me.github.io"
+
+
 def test_search_triggers_and_conflicts_when_running():
     store = InMemoryStore()
     release = threading.Event()

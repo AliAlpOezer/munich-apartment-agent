@@ -84,6 +84,23 @@ pip install -e ".[web]"
 python -m apartment_agent.web --host 0.0.0.0 --port 8000   # needs SUPABASE_* in .env
 ```
 
+### Host the UI on GitHub Pages (backend stays on the box)
+Pages serves only the static frontend; the FastAPI backend keeps running on the box. The page calls
+the box's API, so the box must be reachable over **HTTPS** (a `https://<user>.github.io` page can't
+call a plain-HTTP or private host — mixed content). [Tailscale Funnel](https://tailscale.com/kb/1223/funnel)
+is the easy way to get an HTTPS URL.
+
+1. **Expose the backend** (HTTPS), e.g. `tailscale funnel 8000`, and set in the box's `.env`:
+   `WEB_API_TOKEN=<a long random secret>` and `WEB_CORS_ORIGINS=https://<user>.github.io`.
+2. **Repo variable** `API_BASE` = the box's HTTPS URL (Settings → Actions → Variables).
+3. Make the repo **public** (free Pages) and enable **Pages → Source: GitHub Actions**.
+4. Push `main` — `.github/workflows/pages.yml` builds and deploys the static site.
+5. Open the Pages URL, click **⚙**, and paste your `WEB_API_TOKEN`. The token lives only in your
+   browser (localStorage) — it is **never** baked into the published page.
+
+> The token guards every `/api` route, so a public Pages URL exposes nothing without it. Without a
+> token the API is open — only acceptable on a private network.
+
 ## Deploy (every 3 hours)
 ```bash
 bash deploy/systemd/install.sh             # installs a user systemd timer

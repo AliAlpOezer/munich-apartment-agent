@@ -1,0 +1,49 @@
+name: Deploy dashboard to GitHub Pages
+
+# Publishes the static dashboard (src/apartment_agent/web/static) to GitHub Pages.
+# The page calls your box's FastAPI backend; set the repo variable API_BASE to the box URL
+# (Settings → Secrets and variables → Actions → Variables). The API token is NOT baked in —
+# it is entered in the browser via the ⚙ settings button. Repo must be public, or Pages enabled
+# on a paid plan.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/apartment_agent/web/static/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Assemble static site
+        run: |
+          src="src/apartment_agent/web/static"
+          mkdir -p _site/static
+          cp "$src/index.html" _site/index.html
+          cp "$src/style.css" "$src/app.js" _site/static/
+          # config.js from the API_BASE repo variable (no token — that stays in the browser)
+          printf 'window.AGENT_CONFIG = { apiBase: "%s" };\n' "${{ vars.API_BASE }}" > _site/static/config.js
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - id: deploy
+        uses: actions/deploy-pages@v4

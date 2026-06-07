@@ -69,6 +69,15 @@ class Settings(BaseSettings):
     checkpoint_db: str = "agent_state.sqlite"
     # Web dashboard auto-search interval in minutes (0 disables the timer; manual button always on).
     web_auto_search_minutes: int = 180
+    # Shared token required on /api requests when set (the dashboard sends it as X-API-Token).
+    # Strongly recommended once the box is reachable from a public GitHub Pages frontend.
+    web_api_token: str = ""
+    # Allowed CORS origins for the API (comma-separated), e.g. your https://<user>.github.io page.
+    web_cors_origins: str = "*"
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [o.strip() for o in self.web_cors_origins.split(",") if o.strip()] or ["*"]
     # Where the knowledge wiki is written. Gitignored so it survives `git reset --hard` redeploys.
     wiki_dir: str = "wiki"
     log_level: str = "INFO"

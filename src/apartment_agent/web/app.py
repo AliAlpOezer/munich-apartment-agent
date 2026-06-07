@@ -9,7 +9,8 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -27,14 +28,36 @@ class StatusUpdate(BaseModel):
     status: str
 
 
-def create_app(store: Store, runner: AgentRunner, *, auto_search_minutes: int = 0) -> FastAPI:
+def create_app(
+    store: Store,
+    runner: AgentRunner,
+    *,
+    auto_search_minutes: int = 0,
+    api_token: str = "",
+    cors_origins: list[str] | None = None,
+) -> FastAPI:
     app = FastAPI(title="Munich Apartment Agent", docs_url="/api/docs")
 
-    @app.get("/api/listings")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=cors_origins or ["*"],
+        allow_methods=["GET", "POST"],
+        allow_headers=["*"],  # includes X-API-Token; no cookies, so wildcard origin is safe
+    )
+
+    def require_token(x_api_token: str = Header(default="")) -> None:
+        """Guard /api when a token is configured. The frontend sends X-API-Token (kept in the
+        browser, never embedded in the public page)."""
+        if api_token and x_api_token != api_token:
+            raise HTTPException(401, "missing or invalid API token")
+
+    guard = [Depends(require_token)]
+
+    @app.get("/api/listings", dependencies=guard)
     def list_listings() -> dict:
         return {"listings": store.listings()}
 
-    @app.post("/api/listings/status")
+    @app.post("/api/listings/status", dependencies=guard)
     def update_status(body: StatusUpdate) -> dict:
         if body.status not in STATUSES:
             raise HTTPException(400, f"status must be one of {STATUSES}")
@@ -42,7 +65,7 @@ def create_app(store: Store, runner: AgentRunner, *, auto_search_minutes: int = 
             raise HTTPException(404, "listing not found")
         return {"ok": True, "key": body.key, "status": body.status}
 
-    @app.get("/api/status")
+    @app.get("/api/status", dependencies=guard)
     def status() -> dict:
         run = store.last_run()
         last_activity = None
@@ -56,7 +79,7 @@ def create_app(store: Store, runner: AgentRunner, *, auto_search_minutes: int = 
             "auto_search_minutes": auto_search_minutes,
         }
 
-    @app.post("/api/search")
+    @app.post("/api/search", dependencies=guard)
     def search() -> dict:
         if not runner.trigger():
             raise HTTPException(409, "a search is already running")
@@ -84,4 +107,9 @@ def default_app() -> FastAPI:
     db = ListingsDB(settings.supabase_url, settings.supabase_service_key)
     store = SupabaseStore(db)
     runner = AgentRunner(settings)
-    return create_app(store, runner, auto_search_minutes=settings.web_auto_search_minutes)
+    return create_app(
+        store, runner,
+        auto_search_minutes=settings.web_auto_search_minutes,
+        api_token=settings.web_api_token,
+        cors_origins=settings.cors_origin_list,
+    )

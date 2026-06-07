@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Munich Apartment Agent</title>
-  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="stylesheet" href="static/style.css" />
 </head>
 <body>
   <header class="topbar">
@@ -22,8 +22,18 @@
         <span id="countdown" class="countdown"></span>
       </div>
     </div>
-    <button id="search-btn" class="search-btn">Search now</button>
+    <div class="btns">
+      <button id="search-btn" class="search-btn">Search now</button>
+      <button id="settings-btn" class="icon-btn" title="Connection settings">⚙</button>
+    </div>
   </header>
+
+  <div id="settings" class="settings hidden">
+    <label>Box API URL <input id="cfg-api" type="url" placeholder="https://your-box:8000" /></label>
+    <label>API token <input id="cfg-token" type="password" placeholder="(optional)" /></label>
+    <button id="cfg-save">Save</button>
+    <span class="settings-hint">Stored only in this browser — never published with the page.</span>
+  </div>
 
   <main>
     <div id="empty" class="empty hidden">No listings yet — run a search.</div>
@@ -47,6 +57,7 @@
     </article>
   </template>
 
-  <script src="/static/app.js"></script>
+  <script src="static/config.js"></script>
+  <script src="static/app.js"></script>
 </body>
 </html>

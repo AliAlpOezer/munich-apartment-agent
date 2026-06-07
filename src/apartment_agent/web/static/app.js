@@ -1,18 +1,28 @@
 "use strict";
 
+// --- connection config (browser settings override config.js defaults) ------
+const CFG = window.AGENT_CONFIG || {};
+function apiBase() { return localStorage.getItem("apiBase") || CFG.apiBase || ""; }
+function apiToken() { return localStorage.getItem("apiToken") || ""; }
+function authHeaders(extra) {
+  const h = Object.assign({}, extra || {});
+  const t = apiToken();
+  if (t) h["X-API-Token"] = t;
+  return h;
+}
+
 // --- tiny fetch helpers ----------------------------------------------------
-async function getJSON(url) {
-  const r = await fetch(url);
-  if (!r.ok) throw new Error(`${url} -> ${r.status}`);
+async function getJSON(path) {
+  const r = await fetch(apiBase() + path, { headers: authHeaders() });
+  if (!r.ok) throw new Error(`${path} -> ${r.status}`);
   return r.json();
 }
-async function postJSON(url, body) {
-  const r = await fetch(url, {
+async function postJSON(path, body) {
+  return fetch(apiBase() + path, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: authHeaders({ "Content-Type": "application/json" }),
     body: body ? JSON.stringify(body) : null,
   });
-  return r;
 }
 
 // --- formatting ------------------------------------------------------------
@@ -138,6 +148,23 @@ function tickCountdown() {
 }
 
 document.getElementById("search-btn").onclick = () => triggerSearch(true);
+
+// --- settings panel (API URL + token, stored in localStorage) --------------
+const settingsEl = document.getElementById("settings");
+document.getElementById("settings-btn").onclick = () => {
+  document.getElementById("cfg-api").value = localStorage.getItem("apiBase") || CFG.apiBase || "";
+  document.getElementById("cfg-token").value = localStorage.getItem("apiToken") || "";
+  settingsEl.classList.toggle("hidden");
+};
+document.getElementById("cfg-save").onclick = () => {
+  const api = document.getElementById("cfg-api").value.trim().replace(/\/$/, "");
+  const token = document.getElementById("cfg-token").value.trim();
+  api ? localStorage.setItem("apiBase", api) : localStorage.removeItem("apiBase");
+  token ? localStorage.setItem("apiToken", token) : localStorage.removeItem("apiToken");
+  settingsEl.classList.add("hidden");
+  loadListings();
+  loadStatus();
+};
 
 // initial load + polling loops
 loadListings();
