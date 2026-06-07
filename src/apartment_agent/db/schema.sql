@@ -90,3 +90,16 @@ create table if not exists bot_state (
     key   text primary key,
     value text not null
 );
+
+-- Supabase: tables created via SQL don't auto-grant the API roles, so the service key gets
+-- "permission denied". Grant access to the API roles. Guarded so it's a no-op on plain Postgres.
+do $$
+begin
+  if exists (select 1 from pg_roles where rolname = 'service_role') then
+    grant select, insert, update, delete
+      on public.listings, public.runs, public.notifications, public.feedback, public.bot_state
+      to anon, authenticated, service_role;
+    grant usage, select on all sequences in schema public
+      to anon, authenticated, service_role;
+  end if;
+end $$;
