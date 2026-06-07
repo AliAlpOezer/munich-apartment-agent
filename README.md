@@ -101,6 +101,13 @@ is the easy way to get an HTTPS URL.
 > The token guards every `/api` route, so a public Pages URL exposes nothing without it. Without a
 > token the API is open — only acceptable on a private network.
 
+### Or host the whole app free on HuggingFace Spaces
+GitHub Pages can't run the backend, so "Search now" / status writes need a server. The simplest free
+way to get the **full** app (UI + backend, same-origin, no box) is a HuggingFace **Docker Space**: it
+`pip install`s this repo and runs the FastAPI app. See [`deploy/hf-space/`](deploy/hf-space/) for the
+`Dockerfile`, the Space `README.md`, and setup (secrets + private/public choice). Autonomous 3h runs
+still belong on the box or a GitHub Actions cron (free Spaces sleep when idle).
+
 ## Deploy (every 3 hours)
 ```bash
 bash deploy/systemd/install.sh             # installs a user systemd timer
