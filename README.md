@@ -84,6 +84,21 @@ pip install -e ".[web]"
 python -m apartment_agent.web --host 0.0.0.0 --port 8000   # needs SUPABASE_* in .env
 ```
 
+### Run on your own server over Tailscale (recommended)
+Simplest and fullest: run the whole app on the box and reach it from your other Tailscale devices.
+Same-origin (no CORS), and the tailnet is the access boundary (only your devices can reach it — no
+token needed). Search-now, status edits, and the report all work.
+```bash
+bash deploy/systemd/install-dashboard.sh     # installs [web] deps + a user service on :8000
+# then from any Tailscale device:
+#   http://<box-hostname>:8000   (or http://<tailscale-ip>:8000)
+# optional HTTPS tailnet URL:
+tailscale serve --bg 8000                     # -> https://<box>.<tailnet>.ts.net
+```
+The autonomous 3h timer keeps running separately; the dashboard uses its own checkpoint DB so the
+two never collide. (Set `WEB_AUTO_SEARCH_MINUTES=0` in `.env` if you don't want the open page to
+auto-trigger extra runs.)
+
 ### Host the UI on GitHub Pages (backend stays on the box)
 Pages serves only the static frontend; the FastAPI backend keeps running on the box. The page calls
 the box's API, so the box must be reachable over **HTTPS** (a `https://<user>.github.io` page can't

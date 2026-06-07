@@ -1,0 +1,19 @@
+[Unit]
+Description=Munich apartment-hunter dashboard (web UI, reachable over Tailscale)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/munich-apartment-agent
+# The app loads ./.env itself. Bind to all interfaces so other Tailscale devices can reach it
+# (the tailnet is the access boundary). Use its own checkpoint DB so a dashboard-triggered run
+# never contends on SQLite with the 3h timer process.
+Environment=CHECKPOINT_DB=%h/munich-apartment-agent/dashboard_state.sqlite
+ExecStart=%h/munich-apartment-agent/.venv/bin/python -m apartment_agent.web --host 0.0.0.0 --port 8000
+Restart=on-failure
+RestartSec=5
+Nice=10
+
+[Install]
+WantedBy=default.target
