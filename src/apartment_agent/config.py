@@ -67,6 +67,8 @@ class Settings(BaseSettings):
     # Durable execution: persist graph state per super-step so an interrupted run resumes.
     enable_checkpointing: bool = True
     checkpoint_db: str = "agent_state.sqlite"
+    # Web dashboard auto-search interval in minutes (0 disables the timer; manual button always on).
+    web_auto_search_minutes: int = 180
     # Where the knowledge wiki is written. Gitignored so it survives `git reset --hard` redeploys.
     wiki_dir: str = "wiki"
     log_level: str = "INFO"

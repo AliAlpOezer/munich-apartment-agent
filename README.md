@@ -72,6 +72,18 @@ python -m apartment_agent.evals.harness    # run fit-score evals against the liv
 pytest                                     # unit tests (no creds); RUN_LIVE_EVALS=1 adds a live eval
 ```
 
+## Dashboard
+A web frontend (FastAPI + a no-build vanilla-JS page) over the same Supabase data:
+- listing **cards**, newest/new-status first (top-left); mark each **New / Seen / Sent**
+- the agent's **last activity** time and a **run report** (new findings vs. only-already-seen vs.
+  nothing matched)
+- a **Search now** button and an **auto-search countdown** (`WEB_AUTO_SEARCH_MINUTES`) — both trigger
+  a real agent run in the background; status polls live
+```bash
+pip install -e ".[web]"
+python -m apartment_agent.web --host 0.0.0.0 --port 8000   # needs SUPABASE_* in .env
+```
+
 ## Deploy (every 3 hours)
 ```bash
 bash deploy/systemd/install.sh             # installs a user systemd timer

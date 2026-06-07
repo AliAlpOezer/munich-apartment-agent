@@ -29,6 +29,10 @@ create table if not exists listings (
     first_seen_at timestamptz not null default now(),
     notified_at   timestamptz,
 
+    -- Frontend workflow state, user-driven: 'new' | 'seen' | 'sent'
+    status            text        not null default 'new',
+    status_updated_at timestamptz,
+
     unique (source, external_id)
 );
 
@@ -36,6 +40,11 @@ create table if not exists listings (
 create index if not exists listings_notified_idx   on listings (notified_at);
 create index if not exists listings_first_seen_idx  on listings (first_seen_at desc);
 create index if not exists listings_fit_idx         on listings (fit_score desc);
+create index if not exists listings_status_idx       on listings (status);
+
+-- For repos created before the status column existed:
+alter table listings add column if not exists status text not null default 'new';
+alter table listings add column if not exists status_updated_at timestamptz;
 
 -- Per-run metrics (observability / trend history; also feeds the wiki + frontend).
 create table if not exists runs (

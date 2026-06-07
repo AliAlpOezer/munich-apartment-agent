@@ -58,6 +58,47 @@ def _build_deps(settings):
     )
 
 
+def _run_graph(settings) -> dict:
+    """Build deps and run one full pass of the graph; returns the final state dict.
+
+    Shared by the CLI and the web backend so both invoke the agent identically (checkpointing,
+    metrics persistence, token accounting). The web app calls `run_pipeline` for just the RunResult.
+    """
+    deps = _build_deps(settings)
+    result = RunResult(started_at=datetime.now(UTC))
+
+    if settings.enable_checkpointing and not settings.dry_run:
+        from langgraph.checkpoint.sqlite import SqliteSaver
+
+        from apartment_agent.checkpoint import new_thread_id, resume_incomplete
+
+        with SqliteSaver.from_conn_string(settings.checkpoint_db) as saver:
+            graph = build_graph(deps, checkpointer=saver)
+            resumed = resume_incomplete(graph)
+            if resumed:
+                log.info("resumed %d interrupted run(s): %s", len(resumed), ", ".join(resumed))
+            config = {"configurable": {"thread_id": new_thread_id()}}
+            final = graph.invoke({"result": result}, config=config)
+    else:
+        final = build_graph(deps).invoke({"result": result})
+
+    r = final.get("result", result)
+    r.finished_at = datetime.now(UTC)
+    if deps.router is not None:
+        r.tokens = deps.router.usage
+    if deps.db is not None and not settings.dry_run:
+        try:
+            deps.db.record_run(r)
+        except Exception as e:  # noqa: BLE001 - metrics persistence must not fail the run
+            log.warning("could not record run metrics: %s", e)
+    return final
+
+
+def run_pipeline(settings) -> RunResult:
+    """Run one full agent pass and return its RunResult (used by the web backend)."""
+    return _run_graph(settings).get("result", RunResult())
+
+
 def _print_dry_run(state) -> None:
     new = state.get("new", [])
     print(f"\n=== DRY RUN: {len(new)} listing(s) passed the filter ===")
@@ -143,33 +184,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.sync_feedback:
         return _run_sync_feedback(settings)
 
-    deps = _build_deps(settings)
-    result = RunResult(started_at=datetime.now(UTC))
-
-    if settings.enable_checkpointing and not settings.dry_run:
-        from langgraph.checkpoint.sqlite import SqliteSaver
-
-        from apartment_agent.checkpoint import new_thread_id, resume_incomplete
-
-        with SqliteSaver.from_conn_string(settings.checkpoint_db) as saver:
-            graph = build_graph(deps, checkpointer=saver)
-            resumed = resume_incomplete(graph)
-            if resumed:
-                log.info("resumed %d interrupted run(s): %s", len(resumed), ", ".join(resumed))
-            config = {"configurable": {"thread_id": new_thread_id()}}
-            final = graph.invoke({"result": result}, config=config)
-    else:
-        final = build_graph(deps).invoke({"result": result})
-
-    r = final.get("result", result)
-    r.finished_at = datetime.now(UTC)
-    if deps.router is not None:
-        r.tokens = deps.router.usage
-    if deps.db is not None and not settings.dry_run:
-        try:
-            deps.db.record_run(r)
-        except Exception as e:  # noqa: BLE001 - metrics persistence must not fail the run
-            log.warning("could not record run metrics: %s", e)
+    final = _run_graph(settings)
+    r = final.get("result", RunResult())
 
     if settings.dry_run:
         _print_dry_run(final)

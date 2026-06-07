@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Munich Apartment Agent</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">🏠</span>
+      <h1>Munich Apartment Agent</h1>
+    </div>
+    <div class="status">
+      <div class="status-line">
+        <span id="report-badge" class="badge">…</span>
+        <span id="agent-state" class="agent-state"></span>
+      </div>
+      <div class="status-line subtle">
+        <span id="last-activity">last activity: —</span>
+        <span id="countdown" class="countdown"></span>
+      </div>
+    </div>
+    <button id="search-btn" class="search-btn">Search now</button>
+  </header>
+
+  <main>
+    <div id="empty" class="empty hidden">No listings yet — run a search.</div>
+    <section id="grid" class="grid" aria-live="polite"></section>
+  </main>
+
+  <template id="card-tpl">
+    <article class="card">
+      <div class="card-head">
+        <span class="new-badge">NEW</span>
+        <span class="fit"></span>
+      </div>
+      <a class="title" target="_blank" rel="noopener"></a>
+      <div class="meta"></div>
+      <p class="summary"></p>
+      <div class="actions">
+        <button data-status="new">New</button>
+        <button data-status="seen">Seen</button>
+        <button data-status="sent">Sent</button>
+      </div>
+    </article>
+  </template>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

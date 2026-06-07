@@ -107,6 +107,31 @@ class ListingsDB:
         self.client.table(TABLE).upsert(rows, on_conflict="source,external_id").execute()
         return len(rows)
 
+    # -- frontend reads ------------------------------------------------------
+    def web_listings(self, limit: int = 200) -> list[dict]:
+        """Raw listing rows (incl. status) for the dashboard, newest first."""
+        resp = (
+            self.client.table(TABLE)
+            .select("*").order("first_seen_at", desc=True).limit(limit).execute()
+        )
+        return resp.data or []
+
+    def set_status(self, source: str, external_id: str, status: str) -> None:
+        now = datetime.now(UTC).isoformat()
+        (
+            self.client.table(TABLE)
+            .update({"status": status, "status_updated_at": now})
+            .eq("source", source).eq("external_id", external_id).execute()
+        )
+
+    def latest_run(self) -> dict | None:
+        resp = (
+            self.client.table(RUNS_TABLE)
+            .select("*").order("created_at", desc=True).limit(1).execute()
+        )
+        rows = resp.data or []
+        return rows[0] if rows else None
+
     def all_listings(self, limit: int = 2000) -> list[Listing]:
         """Every stored listing (newest first), rebuilt as Listings — the wiki's stats corpus."""
         resp = (
