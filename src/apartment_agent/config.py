@@ -56,10 +56,18 @@ class Settings(BaseSettings):
     telegram_chat_id: str = ""
 
     # --- Filters ---
-    max_warm_rent_eur: float = 700.0
+    max_warm_rent_eur: float = 657.0
     min_size_sqm: float = 12.0
     move_in_date: date = date(2026, 10, 1)
     listing_types: str = "wg_room,apartment"
+
+    # --- Search geo-radius ---
+    # Center the search on a point + radius (metres) instead of the whole city. Defaults to a 5 km
+    # radius around Alte Heide (north Munich). Blank lat/lng falls back to a city-wide search.
+    search_center_label: str = "Alte Heide, München, Deutschland, 80805"
+    search_center_lat: float | None = 48.1783353
+    search_center_lng: float | None = 11.5978799
+    search_radius_m: int = 5000
 
     # --- Behavior ---
     dry_run: bool = False
@@ -101,6 +109,10 @@ class Settings(BaseSettings):
             min_size_sqm=self.min_size_sqm,
             move_in_date=self.move_in_date,
             listing_types=_parse_listing_types(self.listing_types),
+            search_center_label=self.search_center_label,
+            search_center_lat=self.search_center_lat,
+            search_center_lng=self.search_center_lng,
+            search_radius_m=self.search_radius_m,
         )
 
 

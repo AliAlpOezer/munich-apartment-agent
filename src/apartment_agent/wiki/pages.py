@@ -187,9 +187,13 @@ def render_preferences(cfg: FilterConfig, *, updated: date, signal=None) -> str:
     section is rendered beneath the hard filters — the procedural-memory slice of the wiki.
     """
     types = ", ".join(sorted(t.value for t in cfg.listing_types)) or "—"
-    areas = ", ".join(cfg.allowed_locations[:6]) + (
-        f", +{len(cfg.allowed_locations) - 6} more" if len(cfg.allowed_locations) > 6 else ""
-    )
+    if cfg.has_radius:
+        centre = cfg.search_center_label or f"{cfg.search_center_lat}, {cfg.search_center_lng}"
+        areas = f"within {cfg.search_radius_m / 1000:g} km of {centre}"
+    else:
+        areas = ", ".join(cfg.allowed_locations[:6]) + (
+            f", +{len(cfg.allowed_locations) - 6} more" if len(cfg.allowed_locations) > 6 else ""
+        )
     rows = [
         ("max warm rent", _eur(cfg.max_warm_rent_eur)),
         ("min size", _sqm(cfg.min_size_sqm)),

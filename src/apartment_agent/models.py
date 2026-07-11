@@ -69,7 +69,7 @@ class Listing(BaseModel):
 class FilterConfig(BaseModel):
     """Hard search filters. Pure data so the filter function is easy to unit-test."""
 
-    max_warm_rent_eur: float = 700.0
+    max_warm_rent_eur: float = 657.0
     min_size_sqm: float = 12.0
     move_in_date: date = date(2026, 10, 1)
     # available_from must fall within [move_in - before_grace, move_in + after_window].
@@ -81,6 +81,8 @@ class FilterConfig(BaseModel):
         default_factory=lambda: {ListingType.WG_ROOM, ListingType.APARTMENT}
     )
     # Lowercased substrings that an acceptable location must match (city + commutable belt).
+    # Used only for a city-wide search; a geo-radius search (below) supersedes this — the radius
+    # is the authoritative location filter, so the substring allowlist is skipped when it is set.
     allowed_locations: list[str] = Field(
         default_factory=lambda: [
             "münchen", "munchen", "munich",
@@ -91,6 +93,18 @@ class FilterConfig(BaseModel):
             "gauting", "starnberg", "vaterstetten", "markt schwaben", "erding",
         ]
     )
+
+    # Geo-radius search: center point + radius (metres). When lat/lng are set, WG-Gesucht constrains
+    # results to within `search_radius_m` of the point and the `allowed_locations` check is skipped
+    # (the server-side radius already did the geo filtering). None -> whole-city search.
+    search_center_label: str = ""          # human address for WG-Gesucht's radAdd parameter
+    search_center_lat: float | None = None
+    search_center_lng: float | None = None
+    search_radius_m: int = 5000
+
+    @property
+    def has_radius(self) -> bool:
+        return self.search_center_lat is not None and self.search_center_lng is not None
 
 
 class RunResult(BaseModel):

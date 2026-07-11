@@ -140,10 +140,27 @@ def test_parse_detail_costs_wg_gesucht_panels():
 def test_build_search_urls():
     from apartment_agent.models import FilterConfig
 
-    urls = WgGesuchtAdapter().build_search_urls(FilterConfig())
+    urls = WgGesuchtAdapter().build_search_urls(FilterConfig())  # default: 657 cap, no radius
     assert len(urls) == 1
     u = urls[0]
     assert "0+1+2+3" in u                                   # all four categories
     assert "city_id=90" in u
-    assert "rMax=700" in u and "rent_range=0%2C700" in u
+    assert "rMax=657" in u and "rent_range=0%2C657" in u
+    assert "min_rent=0" in u and "max_rent=657" in u and "rMin=0" in u
+    assert "sort_column=3" in u                             # newest first
     assert "dFr=" in u                                      # available-from date filter present
+    assert "radDis" not in u                                # no centre configured -> city-wide
+
+
+def test_build_search_urls_with_radius():
+    from apartment_agent.models import FilterConfig
+
+    cfg = FilterConfig(
+        search_center_label="Alte Heide, München, Deutschland, 80805",
+        search_center_lat=48.1783353, search_center_lng=11.5978799, search_radius_m=5000,
+    )
+    assert cfg.has_radius
+    u = WgGesuchtAdapter().build_search_urls(cfg)[0]
+    assert "radDis=5000" in u
+    assert "radLat=48.1783353" in u and "radLng=11.5978799" in u
+    assert "radAdd=Alte+Heide" in u                          # label is URL-encoded (spaces -> +)

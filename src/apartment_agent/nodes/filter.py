@@ -16,6 +16,8 @@ Filter rules (all must pass):
        (Listing categories are controlled by the search URL, so type is not re-checked.)
   4. Location matches one of the allowed substrings (checks district/address/city).
        - No location text at all: keep (flagged).
+       - Skipped entirely for a geo-radius search: the server-side radius is authoritative, so the
+         suburb allowlist would only over-reject valid within-radius listings.
 """
 
 from __future__ import annotations
@@ -52,12 +54,15 @@ def passes_filter(listing: Listing, cfg: FilterConfig) -> tuple[bool, list[str]]
     if listing.available_to is not None and listing.available_to < cfg.move_in_date:
         reasons.append(f"sublet ends {listing.available_to} before move-in")
 
-    # 5. Location
-    haystack = " ".join(
-        part.lower() for part in (listing.district, listing.address, listing.city) if part
-    )
-    if haystack and not any(loc in haystack for loc in cfg.allowed_locations):
-        reasons.append("location not in allowed area")
+    # 5. Location. A geo-radius search already constrained results server-side, so the substring
+    #    allowlist is skipped then (it would over-reject valid within-radius suburbs). Only the
+    #    city-wide search relies on the allowlist.
+    if not cfg.has_radius:
+        haystack = " ".join(
+            part.lower() for part in (listing.district, listing.address, listing.city) if part
+        )
+        if haystack and not any(loc in haystack for loc in cfg.allowed_locations):
+            reasons.append("location not in allowed area")
 
     return (len(reasons) == 0, reasons)
 

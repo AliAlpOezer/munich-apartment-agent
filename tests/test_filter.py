@@ -29,7 +29,7 @@ def make_listing(**overrides) -> Listing:
 
 @pytest.fixture
 def cfg() -> FilterConfig:
-    return FilterConfig()  # defaults: 700€ warm, 12m², move-in 2025-10-01
+    return FilterConfig()  # defaults: 657€ warm, 12m², move-in 2026-10-01, no geo-radius
 
 
 def test_baseline_passes(cfg):
@@ -39,17 +39,17 @@ def test_baseline_passes(cfg):
 
 # --- Rent ---
 def test_warm_rent_at_cap_passes(cfg):
-    assert passes_filter(make_listing(price_warm=700.0), cfg)[0]
+    assert passes_filter(make_listing(price_warm=657.0), cfg)[0]
 
 
 def test_warm_rent_over_cap_fails(cfg):
-    ok, reasons = passes_filter(make_listing(price_warm=700.01), cfg)
+    ok, reasons = passes_filter(make_listing(price_warm=657.01), cfg)
     assert not ok and any("rent" in r for r in reasons)
 
 
 def test_falls_back_to_cold_rent_when_warm_unknown(cfg):
     # warm unknown, cold within cap -> passes (permissive lower bound)
-    assert passes_filter(make_listing(price_warm=None, price_cold=690.0), cfg)[0]
+    assert passes_filter(make_listing(price_warm=None, price_cold=650.0), cfg)[0]
     # warm unknown, cold over cap -> fails
     assert not passes_filter(make_listing(price_warm=None, price_cold=900.0), cfg)[0]
 
@@ -116,6 +116,17 @@ def test_far_city_fails(cfg):
 
 def test_no_location_text_kept(cfg):
     assert passes_filter(make_listing(district=None, address=None, city=None), cfg)[0]
+
+
+def test_radius_search_skips_location_allowlist():
+    # A geo-radius search constrains location server-side, so the suburb allowlist is not applied:
+    # a listing whose text is outside the allowlist is NOT rejected on location grounds.
+    radius_cfg = FilterConfig(search_center_lat=48.1783353, search_center_lng=11.5978799)
+    assert radius_cfg.has_radius
+    ok, reasons = passes_filter(
+        make_listing(district="Somewhere Else", address=None, city="Nowheresville"), radius_cfg
+    )
+    assert ok and not any("location" in r for r in reasons)
 
 
 # --- Aggregate ---

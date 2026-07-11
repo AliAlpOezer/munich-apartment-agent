@@ -54,8 +54,8 @@ def _deps(adapter, **over):
 def test_detail_node_drops_listing_over_warm_cap():
     # both pass the list-level filter on their listed (cold-ish) figure of 650...
     listings = [_listing("a", 650.0), _listing("b", 650.0)]
-    # ...but the detail page reveals B's true Warmmiete is 750 (> 700 cap) -> dropped
-    adapter = StubSource(listings, warm_by_id={"a": 680.0, "b": 750.0})
+    # ...but the detail page reveals B's true Warmmiete is 750 (> 657 cap) -> dropped
+    adapter = StubSource(listings, warm_by_id={"a": 650.0, "b": 750.0})
     final = build_graph(_deps(adapter)).invoke({"result": RunResult()})
     kept = [x.external_id for x in final["new"]]
     assert kept == ["a"]
@@ -79,9 +79,9 @@ def test_empty_scrape_routes_to_end():
 
 def test_detail_node_resolves_all_listings_under_bounded_concurrency():
     listings = [_listing(str(i), 650.0) for i in range(7)]
-    warm = {str(i): 660.0 for i in range(7)}  # all under the 700 cap -> all kept
+    warm = {str(i): 650.0 for i in range(7)}  # all under the 657 cap -> all kept
     adapter = StubSource(listings, warm_by_id=warm)
     final = build_graph(_deps(adapter, detail_concurrency=3)).invoke({"result": RunResult()})
     assert len(final["new"]) == 7
     # every listing had its warm rent resolved by a concurrent fetch_costs
-    assert all(x.price_warm == 660.0 for x in final["new"])
+    assert all(x.price_warm == 650.0 for x in final["new"])

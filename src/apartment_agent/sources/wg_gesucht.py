@@ -21,6 +21,7 @@ import random
 import re
 import time
 from datetime import UTC, date, datetime
+from urllib.parse import quote_plus
 
 from selectolax.parser import HTMLParser, Node
 
@@ -245,8 +246,10 @@ class WgGesuchtAdapter(SourceAdapter):
 
     def build_search_urls(self, cfg: FilterConfig) -> list[str]:
         """One combined search: all 4 categories (WG room, 1-room, flat, house), rent <= cap,
-        available from the move-in date onward (WG-Gesucht's `dFr` timestamp), offers only,
-        deactivated hidden. Size is NOT filtered server-side, so the local filter enforces it.
+        available from the move-in date onward (WG-Gesucht's `dFr` timestamp), newest first, offers
+        only, deactivated hidden. When `cfg.has_radius`, results are constrained to within
+        `search_radius_m` of the configured centre (WG-Gesucht's radAdd/radLat/radLng/radDis);
+        otherwise the search is city-wide. Size is NOT filtered server-side (the local filter does).
         """
         dfr = int(
             datetime(
@@ -258,13 +261,22 @@ class WgGesuchtAdapter(SourceAdapter):
             f"{BASE}/wg-zimmer-und-1-zimmer-wohnungen-und-wohnungen-und-haeuser-"
             f"in-Muenchen.{self.city_id}.0+1+2+3.1.0.html"
         )
-        query = (
-            "categories%5B%5D=0&categories%5B%5D=1&categories%5B%5D=2&categories%5B%5D=3"
-            "&rent_types%5B%5D=2&rent_types%5B%5D=1&rent_types%5B%5D=3"
-            f"&rent_range=0%2C{rmax}&offer_filter=1&city_id={self.city_id}"
-            f"&sort_order=0&noDeact=1&rMax={rmax}&dFr={dfr}"
-        )
-        return [f"{path}?{query}"]
+        params = [
+            "categories%5B%5D=0", "categories%5B%5D=1", "categories%5B%5D=2", "categories%5B%5D=3",
+            "rent_types%5B%5D=2", "rent_types%5B%5D=1", "rent_types%5B%5D=3",
+            f"rent_range=0%2C{rmax}", "min_rent=0", f"max_rent={rmax}",
+            "offer_filter=1", f"city_id={self.city_id}",
+            "sort_column=3", "sort_order=0", "noDeact=1",
+            "rMin=0", f"rMax={rmax}", f"dFr={dfr}",
+        ]
+        if cfg.has_radius:
+            params += [
+                f"radAdd={quote_plus(cfg.search_center_label)}",
+                f"radLat={cfg.search_center_lat}",
+                f"radLng={cfg.search_center_lng}",
+                f"radDis={cfg.search_radius_m}",
+            ]
+        return [f"{path}?{'&'.join(params)}"]
 
     def fetch(self, url: str) -> str:
         """Fetch a page. Primary path is curl-cffi with Chrome-TLS impersonation; if that fails

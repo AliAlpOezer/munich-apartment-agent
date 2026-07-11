@@ -12,10 +12,10 @@ for the rare hard call — so you don't pay flagship prices to validate a JSON b
             systemd timer (every 3h, jittered)
                           │
    START → scrape → filter → dedup ──(new?)──► enrich → persist → wiki → notify → END
-   (curl-cffi)   (warm≤700, (SQLite)          (LLM     (SQLite)   (synth) (Telegram)
+   (curl-cffi)   (warm≤657, (SQLite)          (LLM     (SQLite)   (synth) (Telegram)
                   size≥12,                     fit-rank)
                   Oct-2026,
-                  Munich+belt)
+                  ≤5km Alte Heide)
 ```
 
 ## Why it's interesting
@@ -46,12 +46,14 @@ The runtime wiki is **gitignored** so it persists across `git reset --hard` rede
 listing data into the repo; only the schema is tracked. Set `ENABLE_WIKI=false` to skip it.
 
 ## Filters (configurable in `.env`)
-- Warmmiete **≤ 700 €** — the search card shows one ambiguous figure (usually Kaltmiete), so each
+- Warmmiete **≤ 657 €** — the search card shows one ambiguous figure (usually Kaltmiete), so each
   new listing's detail page is fetched to resolve the real warm/cold split before the final filter
   (`ENABLE_DETAIL_FETCH`); falls back to the listed figure when a detail fetch is off or fails
 - Size **≥ 12 m²**
 - Available around **1 Oct 2026** (sublets ending before move-in are dropped)
-- **WG rooms and apartments**, in **Munich + S-Bahn-commutable suburbs**
+- **WG rooms and apartments**, within a **geo-radius** — default **≤ 5 km of Alte Heide** (north
+  Munich) via `SEARCH_CENTER_*` / `SEARCH_RADIUS_M`. When a radius is set it is the authoritative
+  location filter; clear the centre lat/lng to fall back to a Munich + commutable-suburb allowlist
 
 ## Setup
 ```bash
