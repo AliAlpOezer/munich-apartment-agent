@@ -98,6 +98,45 @@ def test_parse_detail_costs_no_rows():
     assert parse_detail_costs("<html><body>no costs here</body></html>") == (None, None)
 
 
+def test_parse_detail_costs_wg_gesucht_panels():
+    """Real WG-Gesucht layout: value read from its own span, not the concatenated row blob.
+
+    Regression guard for the bug where every price came out garbage (e.g. warm=6, cold=17.9)
+    because the whole-row text scan grabbed the first number it found (a floor/size), and where
+    Kaution and non-cost rows (frei ab / address) leaked into the price.
+    """
+    html = """
+    <div class="section_footer_dark"><div class="row"><div class="col-xs-12">
+      <div class="col-xs-6 text-center">
+        <span class="key_fact_detail">Zimmergröße</span><b class="key_fact_value">12m²</b>
+      </div>
+      <div class="col-xs-6 text-center">
+        <span class="key_fact_detail">Gesamtmiete</span><b class="key_fact_value">595€</b>
+      </div>
+    </div></div></div>
+    <div class="panel section_panel"><div class="row"><div class="col-xs-12">
+      <div class="row">
+        <div class="col-xs-6"><span class="section_panel_detail">Miete:</span></div>
+        <div class="col-xs-6"><span class="section_panel_value">450€</span></div>
+      </div>
+      <div class="row">
+        <div class="col-xs-6"><span class="section_panel_detail">Nebenkosten:</span></div>
+        <div class="col-xs-6"><span class="section_panel_value">145€</span></div>
+      </div>
+      <div class="row">
+        <div class="col-xs-6"><span class="section_panel_detail">Kaution:</span></div>
+        <div class="col-xs-6"><span class="section_panel_value">1000€</span></div>
+      </div>
+      <div class="row">
+        <div class="col-xs-6"><span class="section_panel_detail">frei ab:</span></div>
+        <div class="col-xs-6"><span class="section_panel_value">01.10.2026</span></div>
+      </div>
+    </div></div></div>
+    """
+    warm, cold = parse_detail_costs(html)
+    assert warm == 595.0 and cold == 450.0  # Gesamtmiete wins; Kaution + frei-ab date ignored
+
+
 def test_build_search_urls():
     from apartment_agent.models import FilterConfig
 

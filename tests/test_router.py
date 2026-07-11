@@ -7,8 +7,6 @@ from __future__ import annotations
 
 from datetime import date
 
-import pytest
-
 from apartment_agent.config import Settings
 from apartment_agent.graph import Assessment, _parse_assessment, assess_listing
 from apartment_agent.llm.router import ModelRouter, Tier

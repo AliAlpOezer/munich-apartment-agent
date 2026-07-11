@@ -1,7 +1,7 @@
 # 🏠 Munich Apartment-Hunter Agent
 
 An autonomous **LangGraph** agent that wakes every 3 hours, scrapes Munich housing listings
-(WG-Gesucht first) against hard filters, deduplicates against a **Supabase** database, and pushes
+(WG-Gesucht first) against hard filters, deduplicates against a local **SQLite** database, and pushes
 new matches to **Telegram** — built to survive a brutally tight rental market where good listings
 vanish within hours.
 
@@ -12,7 +12,7 @@ for the rare hard call — so you don't pay flagship prices to validate a JSON b
             systemd timer (every 3h, jittered)
                           │
    START → scrape → filter → dedup ──(new?)──► enrich → persist → wiki → notify → END
-   (curl-cffi)   (warm≤700, (Supabase)        (LLM     (Supabase) (synth) (Telegram)
+   (curl-cffi)   (warm≤700, (SQLite)          (LLM     (SQLite)   (synth) (Telegram)
                   size≥12,                     fit-rank)
                   Oct-2026,
                   Munich+belt)
@@ -20,7 +20,8 @@ for the rare hard call — so you don't pay flagship prices to validate a JSON b
 
 ## Why it's interesting
 - **Resilient scraping** — `curl-cffi` with Chrome TLS impersonation gets past the anti-bot layer
-  that blocks plain `requests`; a Playwright-stealth fallback is wired for when it doesn't.
+  that blocks plain `requests`; a headless-browser Playwright fallback (optional `browser` extra)
+  kicks in automatically when curl-cffi is blocked.
 - **Source-adapter pattern** — adding ImmoScout24/Kleinanzeigen later is one subclass.
 - **Tiered model router** — OpenRouter (free) → OpenCode Zen → Claude, escalating only on low
   confidence or failure, with intra-tier rotation for rate-limited free models.
@@ -58,9 +59,10 @@ python -m venv .venv && . .venv/bin/activate
 pip install -e ".[dev]"            # add ".[browser]" for the Playwright fallback
 cp .env.example .env               # then fill in keys
 ```
-1. **Supabase** — create a project, run `src/apartment_agent/db/schema.sql`, put the URL + service key in `.env`.
+1. **Database** — nothing to set up. A local SQLite file (`DB_PATH`, default `apartments.sqlite`) is
+   created and its schema initialized automatically on first run.
 2. **Telegram** — create a bot via @BotFather, get the token + your chat id.
-3. **LLM keys** — OpenRouter (free tier), OpenCode Zen, Anthropic.
+3. **LLM keys** — OpenRouter (free tier) for tier-1, optionally OpenCode Zen + Anthropic for escalation.
 
 ## Run
 ```bash
@@ -73,7 +75,7 @@ pytest                                     # unit tests (no creds); RUN_LIVE_EVA
 ```
 
 ## Dashboard
-A web frontend (FastAPI + a no-build vanilla-JS page) over the same Supabase data:
+A web frontend (FastAPI + a no-build vanilla-JS page) over the same local SQLite data:
 - listing **cards**, newest/new-status first (top-left); mark each **New / Seen / Sent**
 - the agent's **last activity** time and a **run report** (new findings vs. only-already-seen vs.
   nothing matched)
@@ -81,8 +83,11 @@ A web frontend (FastAPI + a no-build vanilla-JS page) over the same Supabase dat
   a real agent run in the background; status polls live
 ```bash
 pip install -e ".[web]"
-python -m apartment_agent.web --host 0.0.0.0 --port 8000   # needs SUPABASE_* in .env
+python -m apartment_agent.web --host 0.0.0.0 --port 8000   # serves DB_PATH (default apartments.sqlite)
 ```
+> The dashboard reads the **same** SQLite file the agent writes, so run both on the same box (they
+> share `DB_PATH`). The agent's 3h timer and the dashboard use separate checkpoint DBs, so they
+> never collide.
 
 ### Run on your own server over Tailscale (recommended)
 Simplest and fullest: run the whole app on the box and reach it from your other Tailscale devices.
@@ -122,6 +127,12 @@ way to get the **full** app (UI + backend, same-origin, no box) is a HuggingFace
 `pip install`s this repo and runs the FastAPI app. See [`deploy/hf-space/`](deploy/hf-space/) for the
 `Dockerfile`, the Space `README.md`, and setup (secrets + private/public choice). Autonomous 3h runs
 still belong on the box or a GitHub Actions cron (free Spaces sleep when idle).
+
+> **Note on the SQLite move:** the DB is now a local file, so a *free* HF Space (ephemeral disk) loses
+> its listings on restart, and a GitHub Actions cron gets a fresh empty DB each run (so dedup/wiki
+> can't accumulate). For durable data run on a persistent box (the Tailscale/systemd path above) — or
+> attach [persistent storage](https://huggingface.co/docs/hub/spaces-storage) and point `DB_PATH` at
+> it. The box path is the recommended, fully-working setup.
 
 ## Deploy (every 3 hours)
 ```bash

@@ -2,7 +2,7 @@
 
 A `WikiStore` is a tiny key→markdown blob store (slug → page text). The default
 `FilesystemWikiStore` keeps one `<slug>.md` file per page under a root dir; the abstraction
-leaves room for a Supabase-backed store later without touching ingest/lint.
+leaves room for a database-backed store later without touching ingest/lint.
 
 Slugs are stable, lowercase, ascii-folded identifiers (`district-schwabing`, `market-overview`).
 Kept dependency-light (stdlib only) so it is trivially unit-testable.

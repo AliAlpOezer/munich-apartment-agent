@@ -27,9 +27,19 @@ class Settings(BaseSettings):
     )
 
     # --- LLM tiers ---
+    # tier1 = cheap: OpenRouter free models (rotated on rate-limit). tier2 = OpenCode Zen,
+    # tier3 = Anthropic/Claude. The listing rater starts at tier1 and only escalates on failure.
     openrouter_api_key: str = ""
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
-    tier1_models: str = "meta-llama/llama-3.3-70b-instruct:free"
+    # Provider-diverse rotation: free models rate-limit hard *per upstream provider*, so the list
+    # spans several. `openrouter/free` auto-routes to whatever free capacity is live; the others are
+    # strong instruct models. The router rotates on 429 and escalates to tier2 if all are throttled.
+    tier1_models: str = (
+        "openrouter/free,"
+        "nvidia/nemotron-3-super-120b-a12b:free,"
+        "qwen/qwen3-next-80b-a3b-instruct:free,"
+        "meta-llama/llama-3.3-70b-instruct:free"
+    )
 
     opencode_zen_api_key: str = ""
     opencode_zen_base_url: str = "https://opencode.ai/zen/v1"
@@ -38,9 +48,8 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     tier3_model: str = "claude-sonnet-4-6"
 
-    # --- Database ---
-    supabase_url: str = ""
-    supabase_service_key: str = ""
+    # --- Database (local SQLite; self-initializing, no server) ---
+    db_path: str = "apartments.sqlite"
 
     # --- Notifications ---
     telegram_bot_token: str = ""

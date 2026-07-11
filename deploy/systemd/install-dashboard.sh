@@ -16,8 +16,8 @@ cd "$REPO_DIR"
 [[ -d .venv ]] || python3 -m venv .venv
 ./.venv/bin/python -m pip install -e ".[web]"
 
-# 2. .env present? (needs SUPABASE_* at least)
-[[ -f .env ]] || echo "WARNING: no .env — copy .env.example to .env and fill SUPABASE_* first." >&2
+# 2. .env present? The dashboard must share DB_PATH with the agent's timer so both see one SQLite DB.
+[[ -f .env ]] || echo "WARNING: no .env — copy .env.example to .env first (DB_PATH, Telegram, keys)." >&2
 
 # 3. render the unit with absolute paths (no %h ambiguity)
 render_unit() {  # $1 = WantedBy target

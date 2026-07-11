@@ -29,10 +29,10 @@ def _build_deps(settings):
         router = ModelRouter(settings)
 
     db = None
-    if not settings.dry_run and settings.supabase_url and settings.supabase_service_key:
-        from apartment_agent.db.supabase_client import ListingsDB
+    if not settings.dry_run:
+        from apartment_agent.db.sqlite_client import ListingsDB
 
-        db = ListingsDB(settings.supabase_url, settings.supabase_service_key)
+        db = ListingsDB(settings.db_path)
 
     notifier = None
     if not settings.dry_run and settings.telegram_bot_token and settings.telegram_chat_id:
@@ -121,10 +121,10 @@ def _run_lint(settings) -> int:
     store = FilesystemWikiStore(settings.wiki_dir)
     linter = WikiLinter(store)
     corpus = None
-    if settings.supabase_url and settings.supabase_service_key:
-        from apartment_agent.db.supabase_client import ListingsDB
+    if settings.db_path:
+        from apartment_agent.db.sqlite_client import ListingsDB
 
-        corpus = ListingsDB(settings.supabase_url, settings.supabase_service_key).all_listings()
+        corpus = ListingsDB(settings.db_path).all_listings()
 
     today = datetime.now(UTC).date()
     report = linter.lint(today=today, corpus=corpus)
@@ -137,17 +137,14 @@ def _run_lint(settings) -> int:
 
 def _run_sync_feedback(settings) -> int:
     """Pull Telegram 👍/👎 reactions, store them mapped to their listing, advance the offset."""
-    configured = (
-        settings.telegram_bot_token and settings.supabase_url and settings.supabase_service_key
-    )
-    if not configured:
-        print("sync-feedback needs Telegram + Supabase configured")
+    if not settings.telegram_bot_token:
+        print("sync-feedback needs TELEGRAM_BOT_TOKEN configured")
         return 1
-    from apartment_agent.db.supabase_client import ListingsDB
+    from apartment_agent.db.sqlite_client import ListingsDB
     from apartment_agent.feedback import sync_feedback
     from apartment_agent.notify.telegram import TelegramNotifier
 
-    db = ListingsDB(settings.supabase_url, settings.supabase_service_key)
+    db = ListingsDB(settings.db_path)
     tg = TelegramNotifier(settings.telegram_bot_token, settings.telegram_chat_id)
 
     saved = sync_feedback(

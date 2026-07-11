@@ -16,6 +16,7 @@ Card anatomy (search results):
 
 from __future__ import annotations
 
+import logging
 import random
 import re
 import time
@@ -26,6 +27,8 @@ from selectolax.parser import HTMLParser, Node
 from apartment_agent.models import FilterConfig, Listing, ListingType
 from apartment_agent.retry import network_retry
 from apartment_agent.sources.base import SourceAdapter
+
+log = logging.getLogger(__name__)
 
 BASE = "https://www.wg-gesucht.de"
 MUNICH_CITY_ID = 90  # WG-Gesucht's city id for München
@@ -133,50 +136,94 @@ def _parse_card(card: Node) -> Listing | None:
 
 
 # --- detail-page cost parsing -----------------------------------------------
-# The detail page lists costs in label/value rows. We resolve the warm/cold split from them.
-# Specific labels are checked before the generic "miete" so "Gesamtmiete"/"Kaltmiete" aren't
-# misread as the base "Miete". Deposit ("Kaution") / buyout ("Ablöse") rows carry no rent label
-# and are ignored.
-_COST_LABELS: list[tuple[str, str]] = [
+# The detail page lists costs as label/value PAIRS. The value must be read from its own element,
+# never as "the first number in the row" — WG-Gesucht wraps everything in Bootstrap `.row` divs,
+# so a whole-row text scan concatenates unrelated figures (size, floor, dates) and returns garbage
+# (this is the bug that made every stored price wildly wrong). Specific labels are matched before
+# the generic "miete", and deposit ("Kaution") / buyout ("Ablöse") rows are dropped.
+_COST_KEYS: list[tuple[str, str]] = [
     ("gesamtmiete", "warm"),
     ("warmmiete", "warm"),
     ("kaltmiete", "cold"),
     ("nebenkosten", "extra"),
     ("heizkosten", "extra"),
     ("sonstige kosten", "extra"),
+    ("sonstige", "extra"),
     ("miete", "cold"),  # generic base rent — must stay last
 ]
 
 
-def _classify_cost_row(text: str) -> str | None:
-    for label, key in _COST_LABELS:
-        if label in text:
+def _classify_cost_label(label: str) -> str | None:
+    """Map a cost-row *label* (not the whole row) to warm/cold/extra, or None to ignore."""
+    label = label.lower()
+    if "kaution" in label or "ablös" in label or "ablos" in label:
+        return None  # deposit / buyout — not a monthly rent component
+    for sub, key in _COST_KEYS:
+        if sub in label:
             return key
     return None
+
+
+def _panel_pairs(tree: HTMLParser) -> list[tuple[str, float]]:
+    """(label, value) pairs from WG-Gesucht's structured cost panels, each value read from its own
+    element. Returns [] when the panels aren't present (older layouts / test fixtures)."""
+    pairs: list[tuple[str, float]] = []
+    # Key facts: Gesamtmiete / Warmmiete appear as a label span + a sibling <b> value.
+    for d in tree.css("span.key_fact_detail"):
+        par = d.parent
+        val = par.css_first("b.key_fact_value, span.key_fact_value") if par else None
+        num = _to_float(val.text(strip=True)) if val is not None else None
+        if num is not None:
+            pairs.append((d.text(strip=True), num))
+    # Cost breakdown: label span in one grid column, value span in the sibling column of the .row.
+    for lab in tree.css("span.section_panel_detail"):
+        row = lab.parent.parent if (lab.parent and lab.parent.parent) else None
+        val = row.css_first("span.section_panel_value") if row is not None else None
+        num = _to_float(val.text(strip=True)) if val is not None else None
+        if num is not None:
+            pairs.append((lab.text(strip=True), num))
+    return pairs
+
+
+def _generic_pairs(tree: HTMLParser) -> list[tuple[str, float]]:
+    """Fallback for label/value tables without WG-Gesucht's panel classes: per row, take the label
+    from the cell that names a cost and the value from a *separate* cell holding a number."""
+    pairs: list[tuple[str, float]] = []
+    for row in tree.css("tr, div.row, li"):
+        label: str | None = None
+        value: float | None = None
+        for cell in row.css("td, th, div, span"):
+            text = cell.text(strip=True)
+            if not text:
+                continue
+            if label is None and _classify_cost_label(text) is not None:
+                label = text
+                continue
+            if value is None:
+                num = _to_float(text)
+                if num is not None:
+                    value = num
+        if label is not None and value is not None:
+            pairs.append((label, value))
+    return pairs
 
 
 def parse_detail_costs(html: str) -> tuple[float | None, float | None]:
     """Resolve (warm, cold) EUR/month from a WG-Gesucht detail page.
 
-    Reads the cost breakdown rows; if no explicit Warmmiete/Gesamtmiete is present, derives warm as
-    Kaltmiete + the extra-cost rows (Nebenkosten/Heizkosten/Sonstige). Returns (None, None) when no
-    cost rows are found, so the caller keeps the permissive list-card figure.
+    Reads the cost breakdown as label→value pairs (structured panels first, a generic label/value
+    table as fallback); if no explicit Warmmiete/Gesamtmiete is present, derives warm as Kaltmiete +
+    the extra-cost rows (Nebenkosten/Heizkosten/Sonstige). Returns (None, None) when no cost rows
+    are found, so the caller keeps the permissive list-card figure.
     """
     tree = HTMLParser(html)
+    pairs = _panel_pairs(tree) or _generic_pairs(tree)
     warm: float | None = None
     cold: float | None = None
     extras = 0.0
     seen_extra = False
-    for row in tree.css("tr, .row, li"):
-        text = row.text(strip=True).lower()
-        if "€" not in text and "eur" not in text:
-            continue
-        key = _classify_cost_row(text)
-        if key is None:
-            continue
-        value = _to_float(text)
-        if value is None:
-            continue
+    for label, value in pairs:
+        key = _classify_cost_label(label)
         if key == "warm" and warm is None:
             warm = value
         elif key == "cold" and cold is None:
@@ -219,8 +266,22 @@ class WgGesuchtAdapter(SourceAdapter):
         )
         return [f"{path}?{query}"]
 
-    @network_retry()
     def fetch(self, url: str) -> str:
+        """Fetch a page. Primary path is curl-cffi with Chrome-TLS impersonation; if that fails
+        (e.g. the source starts blocking it) fall back to a real headless browser via Playwright,
+        when it is installed. Raises the original curl error if no fallback succeeds."""
+        try:
+            return self._fetch_curl(url)
+        except Exception as curl_err:  # noqa: BLE001 - any curl failure warrants the browser try
+            log.warning("curl-cffi fetch failed for %s (%s); trying Playwright fallback",
+                        url, curl_err)
+            html = self._fetch_playwright(url)
+            if html is not None:
+                return html
+            raise
+
+    @network_retry()
+    def _fetch_curl(self, url: str) -> str:
         from curl_cffi import requests  # lazy: parsing/tests need no network deps
 
         time.sleep(self.request_delay + random.uniform(0, 1.5))  # gentle, human-ish pacing
@@ -235,6 +296,44 @@ class WgGesuchtAdapter(SourceAdapter):
         )
         resp.raise_for_status()
         return resp.text
+
+    def _fetch_playwright(self, url: str) -> str | None:
+        """Headless-browser fallback for when curl-cffi is blocked. Returns None when Playwright is
+        not installed (the optional `browser` extra) so the caller re-raises the original error.
+
+        Runs the sync Playwright API, which is safe here because scraping happens on worker threads
+        (the detail-fetch pool / the dashboard's background run thread), never in an asyncio loop.
+        """
+        try:
+            from playwright.sync_api import sync_playwright
+        except ImportError:
+            log.warning(
+                "Playwright not installed; skipping browser fallback "
+                "(install with: pip install -e '.[browser]' && playwright install chromium)"
+            )
+            return None
+
+        time.sleep(self.request_delay + random.uniform(0, 1.5))
+        try:
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=True)
+                try:
+                    ctx = browser.new_context(
+                        locale="de-DE",
+                        user_agent=(
+                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                            "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+                        ),
+                        extra_http_headers={"Accept-Language": "de-DE,de;q=0.9,en;q=0.8"},
+                    )
+                    page = ctx.new_page()
+                    page.goto(url, wait_until="domcontentloaded", timeout=45000)
+                    return page.content()
+                finally:
+                    browser.close()
+        except Exception as e:  # noqa: BLE001 - fallback failed too; let caller raise the curl error
+            log.warning("Playwright fallback also failed for %s: %s", url, e)
+            return None
 
     def parse(self, html: str) -> list[Listing]:
         tree = HTMLParser(html)

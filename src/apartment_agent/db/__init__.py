@@ -1,1 +1,1 @@
-"""Supabase persistence."""
+"""Local SQLite persistence."""

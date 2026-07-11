@@ -25,7 +25,7 @@ from typing import TypedDict
 from pydantic import BaseModel
 
 from apartment_agent.config import Settings
-from apartment_agent.db.supabase_client import ListingsDB
+from apartment_agent.db.sqlite_client import ListingsDB
 from apartment_agent.llm.router import ModelRouter, Tier
 from apartment_agent.models import FilterConfig, Listing, RunResult
 from apartment_agent.nodes.filter import filter_listings, passes_filter

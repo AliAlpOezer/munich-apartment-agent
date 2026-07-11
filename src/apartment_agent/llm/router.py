@@ -52,8 +52,8 @@ class ModelRouter:
     # -- tier -> [(provider, model_id), ...] ---------------------------------
     def models_for_tier(self, tier: Tier) -> list[tuple[str, str]]:
         if tier is Tier.CHEAP:
-            # OpenCode Zen free models (OpenRouter's free models proved rate-limited/deprecated).
-            return [("opencode", m) for m in self.s.tier1_model_list]
+            # OpenRouter free models — the router rotates through them on rate-limit/error.
+            return [("openrouter", m) for m in self.s.tier1_model_list]
         if tier is Tier.MEDIUM:
             return [("opencode", self.s.tier2_model)] if self.s.tier2_model else []
         # HARD: use Anthropic directly if a key is set, else serve Claude via OpenCode Zen.

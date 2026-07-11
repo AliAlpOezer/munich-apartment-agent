@@ -1,7 +1,7 @@
 """FastAPI app: dashboard API + static frontend.
 
 `create_app(store, runner, settings)` is injectable so tests pass an in-memory store and a fake
-runner. `default_app()` wires the real Supabase-backed store and the real pipeline runner.
+runner. `default_app()` wires the real SQLite-backed store and the real pipeline runner.
 """
 
 from __future__ import annotations
@@ -96,16 +96,14 @@ def create_app(
 
 
 def default_app() -> FastAPI:
-    """The real app, wired from environment settings (Supabase + live pipeline)."""
+    """The real app, wired from environment settings (local SQLite + live pipeline)."""
     from apartment_agent.config import load_settings
-    from apartment_agent.db.supabase_client import ListingsDB
-    from apartment_agent.web.store import SupabaseStore
+    from apartment_agent.db.sqlite_client import ListingsDB
+    from apartment_agent.web.store import DbStore
 
     settings = load_settings()
-    if not (settings.supabase_url and settings.supabase_service_key):
-        raise RuntimeError("SUPABASE_URL / SUPABASE_SERVICE_KEY required to serve the dashboard")
-    db = ListingsDB(settings.supabase_url, settings.supabase_service_key)
-    store = SupabaseStore(db)
+    db = ListingsDB(settings.db_path)
+    store = DbStore(db)
     runner = AgentRunner(settings)
     return create_app(
         store, runner,

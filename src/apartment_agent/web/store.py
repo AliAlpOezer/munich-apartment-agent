@@ -1,8 +1,8 @@
 """Data access for the dashboard, plus pure presentation helpers.
 
-`Store` is the interface the API depends on; `SupabaseStore` is the production impl and
-`InMemoryStore` backs dev/tests. The card serialization, ordering, and run-report wording are pure
-functions so they are unit-tested without a database.
+`Store` is the interface the API depends on; `DbStore` is the production impl (backed by the local
+SQLite `ListingsDB`) and `InMemoryStore` backs dev/tests. The card serialization, ordering, and
+run-report wording are pure functions so they are unit-tested without a database.
 """
 
 from __future__ import annotations
@@ -108,8 +108,8 @@ class InMemoryStore:
         self._last_run = run
 
 
-class SupabaseStore:
-    """Production store backed by the agent's Supabase tables."""
+class DbStore:
+    """Production store backed by the agent's local SQLite `ListingsDB`."""
 
     def __init__(self, db):
         self.db = db

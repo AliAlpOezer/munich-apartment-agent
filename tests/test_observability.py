@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from apartment_agent.config import Settings
-from apartment_agent.db.supabase_client import run_to_row
+from apartment_agent.db.sqlite_client import run_to_row
 from apartment_agent.graph import Deps, build_graph
 from apartment_agent.llm.router import ModelRouter, Tier
 from apartment_agent.models import RunResult

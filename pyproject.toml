@@ -1,7 +1,7 @@
 [project]
 name = "munich-apartment-agent"
 version = "0.1.0"
-description = "Autonomous LangGraph agent that hunts Munich apartment/WG listings every 3h, dedups, persists to Supabase, and notifies via Telegram. Tiered LLM usage: cheap models for extraction, premium only for hard reasoning."
+description = "Autonomous LangGraph agent that hunts Munich apartment/WG listings every 3h, dedups, persists to a local SQLite DB, and notifies via Telegram. Tiered LLM usage: cheap models for extraction, premium only for hard reasoning."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
@@ -23,8 +23,7 @@ dependencies = [
     "selectolax>=0.3",              # fast HTML parsing
     "beautifulsoup4>=4.12",         # fallback parsing
     "tenacity>=8.3",                # retries/backoff
-    # Storage + notify
-    "supabase>=2.6",
+    # Storage + notify (SQLite via the stdlib `sqlite3`; no external DB dependency)
     "httpx>=0.27",                  # Telegram Bot API calls
     # Logging
     "structlog>=24.1",

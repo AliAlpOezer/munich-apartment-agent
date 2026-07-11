@@ -5,7 +5,7 @@ can give. They are parsed from the Bot API `getUpdates` payload, mapped back to 
 reacted to, and folded into the wiki `preferences` page so the search intent learns over time.
 
 The parsing and aggregation here are pure (no I/O) so they are fully unit-tested; the live polling
-and persistence live in `notify/telegram.py` and `db/supabase_client.py`.
+and persistence live in `notify/telegram.py` and `db/sqlite_client.py`.
 """
 
 from __future__ import annotations
