@@ -137,6 +137,27 @@ def test_parse_detail_costs_wg_gesucht_panels():
     assert warm == 595.0 and cold == 450.0  # Gesamtmiete wins; Kaution + frei-ab date ignored
 
 
+def test_parse_detail_costs_rejects_placeholder_rent():
+    """A bogus placeholder rent (e.g. Gesamtmiete/Miete = 2 €, seen on real listings) is treated as
+    unresolved, so it can't become the price or sneak the listing past the rent cap."""
+    html = """
+    <div class="section_footer_dark"><div class="col-xs-6 text-center">
+      <span class="key_fact_detail">Gesamtmiete</span><b class="key_fact_value">2€</b>
+    </div></div>
+    <div class="panel section_panel">
+      <div class="row">
+        <div class="col-xs-6"><span class="section_panel_detail">Miete:</span></div>
+        <div class="col-xs-6"><span class="section_panel_value">2€</span></div>
+      </div>
+      <div class="row">
+        <div class="col-xs-6"><span class="section_panel_detail">Kaution:</span></div>
+        <div class="col-xs-6"><span class="section_panel_value">5000€</span></div>
+      </div>
+    </div>
+    """
+    assert parse_detail_costs(html) == (None, None)
+
+
 def test_build_search_urls():
     from apartment_agent.models import FilterConfig
 

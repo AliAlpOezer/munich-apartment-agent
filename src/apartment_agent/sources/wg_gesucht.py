@@ -154,6 +154,13 @@ _COST_KEYS: list[tuple[str, str]] = [
 ]
 
 
+# A real monthly rent is never a couple euros. Some listers enter a placeholder (e.g. "2 €") in the
+# rent field; without a floor that garbage becomes the price AND sneaks the listing past the rent
+# cap. Base-rent (warm/cold) values below this are treated as unresolved. Extras (Nebenkosten) are
+# exempt — 0 € is legitimate. Mirrors the list-card parser's own `< 50` guard.
+_MIN_PLAUSIBLE_RENT_EUR = 50.0
+
+
 def _classify_cost_label(label: str) -> str | None:
     """Map a cost-row *label* (not the whole row) to warm/cold/extra, or None to ignore."""
     label = label.lower()
@@ -225,6 +232,8 @@ def parse_detail_costs(html: str) -> tuple[float | None, float | None]:
     seen_extra = False
     for label, value in pairs:
         key = _classify_cost_label(label)
+        if key in ("warm", "cold") and value < _MIN_PLAUSIBLE_RENT_EUR:
+            continue  # implausible base rent (e.g. a placeholder "2 €") — treat as unresolved
         if key == "warm" and warm is None:
             warm = value
         elif key == "cold" and cold is None:
