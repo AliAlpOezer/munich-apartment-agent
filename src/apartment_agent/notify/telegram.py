@@ -5,7 +5,7 @@ from __future__ import annotations
 import html
 import logging
 
-from apartment_agent.models import Listing
+from apartment_agent.models import Listing, RunResult
 
 log = logging.getLogger(__name__)
 
@@ -57,6 +57,17 @@ def format_digest(listings: list[Listing]) -> list[str]:
     if current.strip():
         messages.append(current.rstrip())
     return messages
+
+
+def format_heartbeat(result: RunResult) -> str:
+    """Compact 'still alive, nothing new' status for a scheduled run that notified nothing.
+
+    Sent on every run with 0 new listings so a quiet Telegram doesn't look like a dead agent.
+    """
+    n_err = len(result.errors)
+    head = ("🟢 No new listings this run" if not n_err
+            else f"⚠️ Ran with {n_err} error(s), no new listings")
+    return f"{head}\nscraped {result.scraped} · matched {result.matched} · {result.new} new"
 
 
 class TelegramNotifier:

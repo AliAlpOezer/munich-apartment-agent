@@ -58,11 +58,15 @@ def _build_deps(settings):
     )
 
 
-def _run_graph(settings) -> dict:
+def _run_graph(settings, *, heartbeat_on_empty: bool = False) -> dict:
     """Build deps and run one full pass of the graph; returns the final state dict.
 
     Shared by the CLI and the web backend so both invoke the agent identically (checkpointing,
     metrics persistence, token accounting). The web app calls `run_pipeline` for just the RunResult.
+
+    When `heartbeat_on_empty` is set (the scheduled CLI path), a run that produced 0 new listings
+    still sends a short Telegram heartbeat, so a quiet chat means "alive, nothing new" rather than
+    an ambiguous silence. Web-triggered runs leave it off (the result is shown in the UI).
     """
     deps = _build_deps(settings)
     result = RunResult(started_at=datetime.now(UTC))
@@ -91,6 +95,15 @@ def _run_graph(settings) -> dict:
             deps.db.record_run(r)
         except Exception as e:  # noqa: BLE001 - metrics persistence must not fail the run
             log.warning("could not record run metrics: %s", e)
+    if heartbeat_on_empty and not settings.dry_run and deps.notifier is not None and r.new == 0:
+        # 0 new -> the notify node sent nothing; ping a "still alive, nothing new" heartbeat.
+        from apartment_agent.notify.telegram import format_heartbeat
+
+        try:
+            deps.notifier.send(format_heartbeat(r))
+            log.info("sent heartbeat (no new listings)")
+        except Exception as e:  # noqa: BLE001 - heartbeat must never fail the run
+            log.warning("could not send heartbeat: %s", e)
     return final
 
 
@@ -181,7 +194,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.sync_feedback:
         return _run_sync_feedback(settings)
 
-    final = _run_graph(settings)
+    final = _run_graph(settings, heartbeat_on_empty=True)
     r = final.get("result", RunResult())
 
     if settings.dry_run:
