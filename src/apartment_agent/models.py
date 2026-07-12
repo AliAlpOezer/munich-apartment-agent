@@ -71,7 +71,7 @@ class FilterConfig(BaseModel):
 
     max_warm_rent_eur: float = 657.0
     min_size_sqm: float = 10.0
-    move_in_date: date = date(2026, 09, 1)
+    move_in_date: date = date(2026, 9, 1)
     # available_from must fall within [move_in - before_grace, move_in + after_window].
     # before_grace: places freeing up slightly early that you could still take.
     # after_window: how far past the move-in date is still acceptable (drops far-future listings).

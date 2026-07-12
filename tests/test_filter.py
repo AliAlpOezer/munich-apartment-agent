@@ -29,7 +29,7 @@ def make_listing(**overrides) -> Listing:
 
 @pytest.fixture
 def cfg() -> FilterConfig:
-    return FilterConfig()  # defaults: 657€ warm, 12m², move-in 2026-10-01, no geo-radius
+    return FilterConfig()  # defaults: 657€ warm, 10m², move-in 2026-09-01, no geo-radius
 
 
 def test_baseline_passes(cfg):
@@ -61,11 +61,11 @@ def test_both_rents_unknown_kept(cfg):
 
 # --- Size ---
 def test_size_at_min_passes(cfg):
-    assert passes_filter(make_listing(size_sqm=12.0), cfg)[0]
+    assert passes_filter(make_listing(size_sqm=10.0), cfg)[0]
 
 
 def test_size_below_min_fails(cfg):
-    ok, reasons = passes_filter(make_listing(size_sqm=11.9), cfg)
+    ok, reasons = passes_filter(make_listing(size_sqm=9.9), cfg)
     assert not ok and any("size" in r for r in reasons)
 
 

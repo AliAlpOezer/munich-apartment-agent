@@ -58,7 +58,7 @@ class Settings(BaseSettings):
     # --- Filters ---
     max_warm_rent_eur: float = 657.0
     min_size_sqm: float = 10.0
-    move_in_date: date = date(2026, 09, 1)
+    move_in_date: date = date(2026, 9, 1)
     listing_types: str = "wg_room,apartment"
 
     # --- Search geo-radius ---

@@ -101,7 +101,7 @@ def test_render_district_page_has_sections_and_links():
 
 def test_render_preferences_from_config():
     page = pages.render_preferences(FilterConfig(), updated=TODAY)
-    assert "657 €" in page and "12 m²" in page and "2026-10-01" in page
+    assert "657 €" in page and "10 m²" in page and "2026-09-01" in page
     assert "[[market-overview]]" in page
 
 
