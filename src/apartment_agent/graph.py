@@ -57,7 +57,7 @@ class Deps:
 
 _ENRICH_SYSTEM = (
     "You help someone relocating to Munich pick rentals. They want an affordable place "
-    "(warm rent <= 657€), at least 12 m², available around 1 October 2026, within ~5 km of Alte "
+    "(warm rent <= 657€), at least 10 m², available around 01 September 2026, within ~5 km of Alte "
     "Heide in north Munich. Rate how well a listing fits (0-100, weighing price, size, location, "
     "timing) and summarize it in one sentence highlighting the standout pro or con. Also report "
     "your confidence (0.0-1.0) in the rating given how complete the listing data is. "
