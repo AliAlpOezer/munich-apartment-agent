@@ -1,0 +1,39 @@
+# Gotchas — munich-apartment-agent
+
+### Editing a filter default in `config.py` (e.g. `move_in_date`) doesn't change deploy behaviour
+Cause: `Settings` is pydantic-settings — for any key, a value set in the box's `.env` / real
+environment always wins over the code default. The default in `config.py` is only used when the key
+is absent from the environment entirely.
+Fix: before "fixing" a filter value, check whether it's set in the deployed `.env` (SSH to the box
+and grep it). If it is, edit `.env` there, not `config.py`. Full key list with defaults is in
+`src/apartment_agent/config.py`'s `Settings` class.
+
+### `date(2026, 09, 1)`-style literal crashes with `SyntaxError`
+Cause: a leading-zero integer literal (`09`) is valid in JS/TS but a `SyntaxError` in Python 3 — a
+trap specifically for developers coming from Node.
+Fix: never write leading zeros in Python numeric literals; use `9` not `09`.
+<!-- TODO(alp): docs/wiki/state/current-state.md attributes a prior fix to commit `2327809`, but
+this repo's git history has only one commit (`b995c23`) — that hash is unverifiable; confirm or
+drop it. -->
+
+### Remote diagnostics over the box's Tailscale tunnel hang or drop
+Cause: the box ("alpiclawd") is reached via local WSL → Tailscale → SSH, and that tunnel path has an
+MTU black hole — packets roughly ≤1028 bytes pass, packets roughly ≥1228 bytes silently drop.
+Fix: make remote commands trickle output line-by-line (avoid big single blobs of stdout/stderr) or
+the session hangs.
+
+### `https://alpiclawd.<tailnet>.ts.net/` dashboard URL is dead, `:8000` works
+Cause: `tailscale serve` is proxying `/` to a stale/wrong port (18789) while the FastAPI app actually
+listens on port 8000.
+Fix: use `http://alpiclawd.<tailnet>.ts.net:8000/` (or the tailnet IP) directly until the `serve`
+config is corrected.
+
+### Scraper reports identical `scraped=18 / matched=12 / new=0` run after run
+Cause: unconfirmed as of the last wiki pass — suspected stale/cached WG-Gesucht result set, not yet
+diagnosed. Only became visible because of the per-run Telegram heartbeat (added specifically so
+silent-but-alive runs are distinguishable from a dead agent).
+Fix: not yet found. If investigating, check whether the scraper is genuinely hitting fresh pages
+(response bodies/timestamps) vs. getting a cached/rate-limited response from WG-Gesucht.
+
+<!-- TODO(alp): no gotchas confirmed beyond the 2026-07-12 wiki pass; verify against current
+deployment state before relying on the last two entries. -->
