@@ -1,0 +1,22 @@
+{
+  "name": "munich-apartment-agent-worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --test-scheduled",
+    "deploy": "wrangler deploy",
+    "types": "wrangler types",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "db:migrate:local": "wrangler d1 migrations apply apartments --local",
+    "db:migrate:remote": "wrangler d1 migrations apply apartments --remote"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "1.4.0",
+    "@vitest/runner": "4.1.12",
+    "@vitest/snapshot": "4.1.12",
+    "typescript": "7.0.2",
+    "vitest": "4.1.12",
+    "wrangler": "4.149.0"
+  }
+}

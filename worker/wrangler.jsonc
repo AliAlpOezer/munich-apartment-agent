@@ -1,0 +1,55 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "apartment-agent",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "observability": { "enabled": true },
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  // Hourly, 05:00-22:00 UTC (06/07-23/24 Berlin). Each run is 1-2 search pages plus one detail
+  // page per new candidate, serialized through the queue below.
+  "triggers": { "crons": ["0 5-22 * * *"] },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "apartments",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "queues": {
+    "producers": [{ "binding": "JOBS", "queue": "apartment-jobs" }],
+    "consumers": [
+      {
+        "queue": "apartment-jobs",
+        // One message at a time: every outbound scrape is serialized (politeness, no overlap).
+        "max_batch_size": 1,
+        "max_batch_timeout": 1,
+        "max_concurrency": 1,
+        // Handlers retry fetch failures themselves (see pipeline.ts); this is the safety net for
+        // unexpected throws such as a D1 outage.
+        "max_retries": 5,
+        "retry_delay": 60
+      }
+    ]
+  },
+  "vars": {
+    "ANCHORS": [
+      { "label": "TUM", "name": "TUM Campus Garching (CIT)", "lat": 48.2625535, "lng": 11.6680432 },
+      { "label": "SAP", "name": "SAP Labs Munich, Garching", "lat": 48.2641004, "lng": 11.6607557 }
+    ],
+    "MAX_WARM_RENT_EUR": 650,
+    "MIN_SIZE_SQM": 10,
+    "AVAILABLE_BY": "2027-01-31",
+    "MIN_STAY_DAYS": 90,
+    "MAX_BIKE_MINUTES": 30,
+    "BIKE_SPEED_KMH": 22,
+    "MAX_PAGES": 5,
+    "MANUAL_RUN_COOLDOWN_MINUTES": 10,
+    "ROUTER_URL": "https://valhalla1.openstreetmap.de"
+  }
+}
