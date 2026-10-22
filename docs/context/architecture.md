@@ -2,57 +2,50 @@
 
 ## Shape
 
-A LangGraph state machine runs the whole scrape-to-notify pipeline as 8 node closures over a `Deps`
-dataclass: `scrape → filter → dedup → (detail → enrich → persist → wiki) → notify`. The only
-conditional edge (`route_after_dedup` in `graph.py`) skips straight to `END` when dedup finds 0 new
-listings — nothing downstream runs on an empty diff. `main.py` and the web dashboard both call the
-same `_run_graph` / `run_pipeline` entry points, so the CLI (`python -m apartment_agent.main`,
-scheduled every ~3h) and the "Search now" button in the dashboard drive an identical graph. State
-(`Settings`, config, defaults) lives in `config.py`; core data types (`Listing`, `FilterConfig`,
-`RunResult`) live in `models.py`. Config resolves `.env`/env var over code default (pydantic-settings,
-`extra="ignore"`) — a value set in the deployed `.env` silently wins over anything changed in
-`config.py`'s code default.
+One Cloudflare Worker (`worker/`, TypeScript, free plan) does everything. A cron trigger (hourly,
+05-22 UTC) or the dashboard's "Search now" creates a run row in D1 and enqueues a `search` job on
+the `apartment-jobs` queue. The queue consumer runs at concurrency 1, so every outbound request is
+serialized. A search-page job fetches one WG-Gesucht results page, parses the cards plus the map
+`markers` JSON (exact lat/lng per listing), routes new listings' e-bike minutes to every anchor
+through Valhalla's matrix API (haversine x 1.3 estimate on failure), filters on card facts, and
+upserts rows. Rows that pass are enqueued as `detail` jobs. A detail job fetches the listing page,
+resolves warm/cold rent, re-runs the same filter and makes the single stage transition
+`pending_detail -> matched|rejected`. Static assets (`worker/public/`) are the dashboard; `/api/*`
+runs the Worker first.
 
 ## Map
 
 | Path | Holds |
 |---|---|
-| `src/apartment_agent/graph.py` | Graph builder, all 8 node closures, `route_after_dedup`, timing wrapper `_timed` |
-| `src/apartment_agent/main.py` | CLI entry (`main`), shared `_run_graph`, checkpoint resume logic |
-| `src/apartment_agent/config.py` | `Settings` (pydantic-settings, reads `.env`, `extra="ignore"`) |
-| `src/apartment_agent/models.py` | `Listing`, `ListingType`, `FilterConfig`, `RunResult` |
-| `src/apartment_agent/sources/` | Source-adapter pattern; `base.py` interface, `wg_gesucht.py` impl (curl-cffi + Playwright fallback) |
-| `src/apartment_agent/nodes/filter.py` | Pure, unit-tested match rules (rent/size/move-in/radius) — no LLM |
-| `src/apartment_agent/llm/router.py` | Tiered LLM router: free OpenRouter → OpenCode Zen → Claude, confidence-gated escalation |
-| `src/apartment_agent/db/sqlite_client.py` | `ListingsDB` — self-initializing local SQLite, WAL mode, short-lived connections |
-| `src/apartment_agent/notify/telegram.py` | Telegram send + `format_heartbeat` |
-| `src/apartment_agent/feedback.py` | Ingests Telegram 👍/👎 reactions into learned preferences (`--sync-feedback`) |
-| `src/apartment_agent/wiki/` | LLM-wiki pattern: `ingest.py`/`pages.py`/`store.py` maintain the runtime markdown wiki at `WIKI_DIR` (gitignored, separate from `docs/wiki/`); `lint.py` backs `--lint` |
-| `src/apartment_agent/web/` | FastAPI dashboard (`app.py`) + vanilla-JS static SPA over the same SQLite `DB_PATH`; single-flight lock on manual runs |
-| `src/apartment_agent/evals/` | `harness.py` — fit-score evals against live LLM tiers; golden `cases.py` |
-| `src/apartment_agent/checkpoint.py`, `retry.py` | LangGraph SQLite checkpointing (resume interrupted runs); tenacity-based transient retry |
-| `deploy/systemd/` | `install.sh` (3h timer) and `install-dashboard.sh` (dashboard service) for the box deploy path |
-| `docs/wiki/` | Deep human-oriented knowledge base (one page per decision/component/concept) — not the runtime wiki above |
+| `worker/src/index.ts` | `fetch` (API vs assets), `scheduled`, `queue` handlers; builds `Deps` |
+| `worker/src/pipeline.ts` | `startRun`, `handleJob` (search page, detail), retry/backoff, politeness spacing |
+| `worker/src/wggesucht.ts` | search URL + derived radius, card/marker/pagination parsing, detail cost parsing |
+| `worker/src/bike.ts` | Valhalla `sources_to_targets` client, estimate fallback, haversine |
+| `worker/src/filter.ts` | pure match rules (rent, size, available-by, minimum stay, bike minutes) |
+| `worker/src/store.ts` + `worker/migrations/` | every SQL statement; D1 schema (`runs`, `run_pages`, `listings`) |
+| `worker/src/api.ts` | `/api/config`, `/api/listings`, `/api/runs`, `POST /api/run`, `POST /api/listings/:id/triage` |
+| `worker/src/config.ts` | typed, validated criteria from `wrangler.jsonc` vars; cron mirror `SCHEDULE` |
+| `worker/public/` | vanilla-JS dashboard (Leaflet map, OSM tiles), `isochrone.geojson` overlay |
+| `worker/scripts/isochrone.mjs` | regenerates the overlay from the vars |
+| `worker/test/` | vitest in workerd; anonymized live fixtures captured 2026-10-22 |
+| `src/apartment_agent/`, `deploy/` | retired Python/LangGraph pipeline (box era); kept until the LLM/wiki/feedback port |
 
 ## Boundaries
 
-- Filtering (`nodes/filter.py`) is pure and deterministic — no LLM call. The LLM only ranks fit and
-  writes prose (enrich + wiki nodes); it never decides control flow.
-- Scraping goes through the `sources/base.py` adapter interface — adding a new site (e.g.
-  ImmoScout24) is a new subclass, not a change to the graph.
-- The agent's 3h timer and the web dashboard share both `DB_PATH` and `checkpoint_db` from the
-  same `.env`; they don't collide because each `_run_graph` call opens a fresh `thread_id`
-  (`checkpoint.py`), not a per-caller checkpoint file.
-- `.env` values always win over `config.py` code defaults when both are set (pydantic-settings
-  precedence).
+- Filtering is pure code over stored columns; no model in control flow. Verdict reasons are stored.
+- One writer per fact: the pipeline owns listing facts and `stage`; only the API writes `triage`.
+- Idempotency is structural: `UNIQUE(source, external_id)`, upserts, guarded stage `UPDATE`, run
+  counts derived from rows. Redelivered or overlapping jobs are harmless.
+- A 200 page with no parseable cards (while markers exist) is a failed page, never "0 new".
+- Writes need the `API_TOKEN` secret and fail closed without it; reads are open (use Cloudflare
+  Access for privacy).
+- Search radius is derived (speed x minutes + anchor spread), a guaranteed superset of the
+  routed area; the routed minutes decide.
 
 ## External dependencies
 
-- **WG-Gesucht** (scrape target) — via `curl-cffi` (Chrome TLS impersonation) with an optional
-  Playwright headless-browser fallback (`browser` extra) when curl-cffi is blocked.
-- **OpenRouter** (tier 1, free), **OpenCode Zen** (tier 2), **Anthropic Claude** (tier 3) — LLM
-  providers, escalated in order on error or low confidence.
-- **Telegram Bot API** (via `httpx`) — outbound notifications and heartbeats; inbound 👍/👎 reaction
-  polling for feedback.
-- **Local SQLite** — no external DB; both the listings store and the LangGraph checkpoint store are
-  local files, gitignored.
+- **WG-Gesucht** — plain `fetch` with browser headers (no TLS impersonation needed as of 2026-10-22).
+- **Valhalla (FOSSGIS public instance)** — bike routing matrix, no key; one call per search page.
+- **Cloudflare** — Workers (cron, queue consumer, static assets), Queues, D1.
+- **OpenStreetMap tiles + Leaflet 1.9.4 (cdnjs, SRI)** — dashboard map. CARTO basemaps now
+  require an API key, so they are not used.

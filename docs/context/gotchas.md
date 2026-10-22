@@ -1,5 +1,28 @@
 # Gotchas — munich-apartment-agent
 
+### A run shows "failed: 0 cards parsed (N map markers)"
+Cause: WG-Gesucht changed its card markup (it did in October 2026: cards became
+`a.wgg-list-card[data-id]`). The pipeline records this as a failed page on purpose instead of
+reporting "0 new".
+Fix: update the selectors in `worker/src/wggesucht.ts` from a live page, refresh
+`worker/test/fixtures/` (anonymize lister names, photos, initials), rerun `npm test`.
+
+### Map shows "API KEY REQUIRED" tiles
+Cause: CARTO basemaps now require an API key.
+Fix: the dashboard uses `tile.openstreetmap.org` and darkens it with a CSS filter in dark mode.
+Don't switch tile providers without checking key requirements.
+
+### Elements with the `hidden` attribute still show
+Cause: any CSS `display` rule (e.g. `.badge { display: inline-flex }`) overrides `[hidden]`.
+Fix: `worker/public/style.css` has `[hidden] { display: none !important; }`; keep it.
+
+### Python tests fail on import: "Modest backend is deprecated since selectolax 1.0"
+Cause: selectolax 1.0 removed `selectolax.parser`.
+Fix: already moved to `selectolax.lexbor` (2026-10-22). Applies only to the retired Python code.
+
+## Legacy: Python box deploy (retired 2026-10-22)
+
+
 ### Editing a filter default in `config.py` (e.g. `move_in_date`) doesn't change deploy behaviour
 Cause: `Settings` is pydantic-settings — for any key, a value set in the box's `.env` / real
 environment always wins over the code default. The default in `config.py` is only used when the key

@@ -7,6 +7,8 @@ tags: [decision, database, sqlite, deployment]
 timestamp: 2026-07-12T00:00:00Z
 ---
 
+> **Superseded 2026-10-22** by [cloudflare-workers-hosting.md](cloudflare-workers-hosting.md): the store is Cloudflare D1 (still SQLite semantics, now managed).
+
 ## Context
 
 The agent needs to remember which listings it has seen (dedup), plus runs, notifications, and feedback. An earlier version used **Supabase** (hosted Postgres). The agent actually runs on one small Ubuntu box.
