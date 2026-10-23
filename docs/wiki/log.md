@@ -2,6 +2,19 @@
 
 Append-only history of documentation passes. Newest first.
 
+## 2026-10-23 — 37-minute limit, U6 alternative, retroactive criteria
+
+**Pages updated**: `decisions/bike-time-filter` (update section, Schleissheim alternatives),
+`decisions/cloudflare-workers-hosting` (invariant 2 now allows version-guarded re-decisions).
+
+**Evidence sources** (checked 2026-10-23)
+- Valhalla matrix at 22 km/h from both anchors to 8 points in Ober-/Unterschleissheim (30.5-36.9 min).
+- Overpass station nodes for the 9 U6 stations Garching-Forschungszentrum to Nordfriedhof.
+- WG-Gesucht: 118 results at a 14.9 km radius, 6 pages.
+- Reproduced the router failure: 10 x 11 and 20 x 11 matrices -> HTTP 400 error_code 150
+  "Exceeded max locations: 100"; 5 x 11 -> 200.
+- Deployed run 11:55 UTC: 116 scraped, 45 matched (25 via the U6), all rides estimated (the bug).
+
 ## 2026-10-22 — Cloudflare Worker revival (Garching)
 
 Design record written before the code, for the move from the Python box to one Cloudflare Worker

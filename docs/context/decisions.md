@@ -14,12 +14,22 @@ cron, two platforms), LangGraph.js (the queue already gives durable stages and r
 Objects (no uniqueness constraint), Workers Paid (not needed yet). Telegram dropped: user chose
 dashboard-only. Rationale: `docs/wiki/decisions/cloudflare-workers-hosting.md`.
 
-### Filter on routed e-bike minutes to TUM and SAP Garching, not a radius (2026-10-22)
+### Filter on routed e-bike minutes to TUM and SAP Garching, or a short ride to the U6 (2026-10-22, widened 2026-10-23)
 Status: settled · revisit-if anchors change or the user switches bike type (`BIKE_SPEED_KMH`).
 Each listing's coordinates (from the search page's map markers) are routed with Valhalla
-(`costing: bicycle`, 22 km/h); the slower anchor must be <= 30 min. Router failure -> flagged
-haversine x 1.3 estimate, never a drop. The WG-Gesucht radius is derived as a guaranteed superset.
-Supersedes the 5 km Alte Heide radius. Rationale: `docs/wiki/decisions/bike-time-filter.md`.
+(`costing: bicycle`, 22 km/h). Passes if the slower anchor is <= 37 min (raised from 30 so all of
+Ober-/Unterschleissheim fits; similar-distance places come along) or the nearest U6 station
+(Garching-Forschungszentrum to Nordfriedhof) is <= 10 min. A per-town exception was rejected as the
+brittle allowlist pattern. Router failure -> flagged haversine x 1.3 estimate, noted on the run,
+re-routed next sighting. Derived radius 14.9 km. Rationale: `docs/wiki/decisions/bike-time-filter.md`.
+
+### Criteria changes apply to listings still online (2026-10-23)
+Status: settled.
+Each decision stores a hash of the criteria (`criteria_version`). A known listing decided under a
+different version, or with an estimated ride, is re-decided when it next appears on a search page:
+triage is kept, a resolved warm rent is reused, and only newly qualifying unresolved ones get a
+detail fetch. Rejected: a one-off backfill job (would miss future changes and needs its own
+trigger) and never re-deciding (a loosened limit would not show listings already rejected).
 
 ### Local SQLite instead of Supabase / managed Postgres
 Status: superseded 2026-10-22 by D1 (hosting moved to Cloudflare); the SQL model carried over.

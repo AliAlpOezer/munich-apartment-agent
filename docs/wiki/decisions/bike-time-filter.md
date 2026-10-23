@@ -1,10 +1,10 @@
 ---
 type: decision
-title: Filter on routed e-bike minutes to TUM and SAP Garching, not a radius
-description: How "within 30 minutes by bike" is decided per listing, with the server-side radius derived as a guaranteed superset.
+title: Filter on routed e-bike minutes to TUM and SAP Garching, or a short ride to the U6
+description: How the commute rule (37 min by e-bike, or 10 min to a U6 station) is decided per listing, with the server-side radius derived as a guaranteed superset.
 resource: worker/src/bike.ts
 tags: [decision, search, geography, filter]
-timestamp: 2026-10-22T00:00:00Z
+timestamp: 2026-10-23T00:00:00Z
 ---
 
 ## Context
@@ -33,6 +33,32 @@ Routed from TUM on 2026-10-22 (Valhalla, 15 km/h profile): Garching centre 2.5 k
 9.4 km, Freimann 10.8 km, Studentenstadt 11.6 km, Alte Heide 12.5 km. At 22 km/h the 30-minute
 line falls around Freimann / Studentenstadt.
 
+## Update 2026-10-23: 37 minutes, or 10 minutes to the U6
+
+The user widened the area:
+
+- **Bike limit 30 -> 37 min** (slower anchor), to take in Oberschleissheim and Unterschleissheim.
+  Routed at 22 km/h on 2026-10-23, slower anchor: Oberschleissheim centre 30.5, south 34.5, west
+  35.9; Unterschleissheim centre 31.7, west 36.4, Lohhof 36.9. Side effect accepted: places at the
+  same distance qualify too (Unterfoehring, Hallbergmoos, Fahrenzhausen, north Milbertshofen).
+- **Alternative commute: <= 10 min by e-bike to any U6 station** from Garching-Forschungszentrum
+  to Nordfriedhof (9 stations, coordinates from OSM station nodes, 2026-10-23). The stops are
+  extra targets in the same matrix request; the nearest one is stored per listing
+  (`stop_label`, `stop_minutes`). A listing passes if either commute fits.
+- **Derived radius** now covers both: max(anchor spread + 37 min x 22 km/h, farthest stop + 10 min
+  x 22 km/h) = 14.9 km (Nordfriedhof dominates). That is 118 listings / 6 pages at <= 650 EUR.
+- **Criteria changes apply retroactively**: each decision stores a hash of the criteria; a
+  listing decided under another version (or whose ride is still an estimate) is re-decided the
+  next time it appears on a search page, keeping its triage and reusing an already-resolved rent.
+
+First run under these rules (2026-10-23 11:55 UTC): 116 scraped, 45 matched, 25 of them only via
+the U6 (mostly Schwabing / Maxvorstadt within 10 min of Nordfriedhof).
+
+The FOSSGIS instance caps a matrix at **100 source x target pairs** (error_code 150). With 11
+targets that first run's requests were refused and every ride fell back to an estimate without
+failing the run; requests are now chunked to fit, a router failure is noted in the run history, and
+estimated rides are re-routed on the next sighting.
+
 ## Alternatives & trade-offs
 
 - **Straight-line radius** (the old Alte Heide design): no dependency, but it admits flats across
@@ -40,9 +66,12 @@ line falls around Freimann / Studentenstadt.
 - **Precomputed isochrone polygon + point-in-polygon**: no runtime dependency, but coarse and it
   cannot show the per-listing minutes the user decides on. It is kept only as a map overlay.
 - **OpenRouteService**: comparable, but needs an API key; Valhalla's public FOSSGIS instance needs
-  none. Its usage terms page was behind a bot wall on 2026-10-22, so calls are kept to one
-  batched matrix request per search page (only for listings not seen before), with a descriptive
+  none. Its usage terms page was behind a bot wall on 2026-10-22, so calls are kept to batched
+  matrix requests (at most 100 pairs each) per search page (only for listings not seen before), with a descriptive
   `User-Agent`.
+- **Per-town exception for Ober-/Unterschleissheim** (2026-10-23): rejected, because matching
+  town names in card text is the brittle allowlist this page replaced; one global limit is simple
+  and explainable, at the cost of admitting other places at the same distance.
 - **Where this is worse**: it depends on a free community server; an outage degrades to estimates
   rather than failing, which can admit or exclude a borderline listing by a few minutes.
 

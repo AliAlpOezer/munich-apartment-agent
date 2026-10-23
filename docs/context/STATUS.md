@@ -1,12 +1,13 @@
 # Status — munich-apartment-agent
 
-Last updated: 2026-10-23
+Last updated: 2026-10-23 (afternoon)
 
 ## Current focus
 
-Revived as a Cloudflare Worker (`worker/`) aimed at Garching: TUM Campus Garching + SAP Labs
-Munich (Garching) as commute anchors, warm rent <= 650 EUR, available by 2027-01-31, <= 30 min by
-e-bike (22 km/h, routed), dashboard only (no Telegram). Branch `garching-cloudflare`.
+Live Cloudflare Worker (`worker/`) aimed at Garching: TUM Campus Garching + SAP Labs Munich
+(Garching) as commute anchors, warm rent <= 650 EUR, available by 2027-01-31, <= 37 min by e-bike
+(22 km/h, routed) or <= 10 min to a U6 station Garching-Forschungszentrum..Nordfriedhof, dashboard
+only (no Telegram). Branch `garching-cloudflare`.
 
 ## In flight
 
@@ -17,9 +18,11 @@ e-bike (22 km/h, routed), dashboard only (no Telegram). Branch `garching-cloudfl
 - Verified on Cloudflare (manual run 08:13 UTC): WG-Gesucht answers Worker egress, Valhalla answered
   all 36 matrix lookups, 36 scraped / 11 matched / 0 errors in ~45 s. Detail jobs used 5-8 ms CPU
   (free limit 10 ms); detail pages are now streamed into HTMLRewriter to widen the margin.
-- Open: the 08:00 UTC cron created no run (deployed 07:57; trigger propagation is the likely cause).
-  Confirm a cron run lands at 09:00 UTC and measure search-page CPU (not captured yet). If search
-  pages approach 10 ms, cut the HTML before parsing or move to Workers Paid.
+- Cron confirmed: 09:00, 10:00, 11:00 UTC runs all done (08:00 was missed right after deploy).
+- 2026-10-23 widening deployed (migration 0002 applied remotely). Its first run had every ride
+  estimated (router 100-pair cap); fixed and redeployed; a follow-up run re-routes the estimates.
+- Open: search-page CPU not measured yet (detail jobs 5-8 ms of the free 10 ms). If search pages
+  approach 10 ms, cut the HTML before parsing or move to Workers Paid.
 
 ## Blocked
 

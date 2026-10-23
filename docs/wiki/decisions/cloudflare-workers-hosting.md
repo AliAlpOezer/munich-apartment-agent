@@ -36,9 +36,11 @@ without a recorded reason.*
 1. **Decisions are code over stored facts.** Every verdict (`matched`/`rejected` plus reasons) is
    computed by the pure filter from columns stored on the listing row, so any verdict can be
    explained and replayed. No model sits in control flow.
-2. **One row per listing, monotone stages.** `UNIQUE(source, external_id)` plus upserts; stage
-   moves only `pending_detail -> matched|rejected`, guarded in the `UPDATE ... WHERE stage = ?`.
-   Queue redelivery, overlapping runs and retries cannot duplicate or regress a listing.
+2. **One row per listing, guarded stages.** `UNIQUE(source, external_id)` plus upserts; stage
+   moves `pending_detail -> matched|rejected`, guarded in the `UPDATE ... WHERE stage = ?`, and is
+   re-decided only when the stored criteria version differs or the ride is an estimate (added
+   2026-10-23, guarded the same way). Redelivery and overlapping runs cannot duplicate a listing or
+   apply an older decision over a newer one.
 3. **One writer per fact.** The pipeline writes listing facts and stage; only the API writes
    `triage` (the user's new/seen/interested/dismissed). Neither touches the other's columns.
 4. **Unknown is kept, never silently dropped.** Missing rent/size/date or an unreachable router

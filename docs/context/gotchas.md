@@ -7,6 +7,13 @@ reporting "0 new".
 Fix: update the selectors in `worker/src/wggesucht.ts` from a live page, refresh
 `worker/test/fixtures/` (anonymize lister names, photos, initials), rerun `npm test`.
 
+### Every ride on a run shows "ride estimated"
+Cause: the Valhalla matrix request was refused. The FOSSGIS instance caps matrices at 100 source x
+target pairs (HTTP 400, error_code 150); adding the 9 U6 stops made 20 x 11 = 220 pairs.
+Fix: `bike.ts` chunks sources to `MAX_MATRIX_PAIRS / targets`. A router failure now shows as a note
+in the run history, and estimated rides are re-routed on the next run. If it recurs, reproduce with
+a direct `sources_to_targets` POST and read the error body.
+
 ### Map shows "API KEY REQUIRED" tiles
 Cause: CARTO basemaps now require an API key.
 Fix: the dashboard uses `tile.openstreetmap.org` and darkens it with a CSS filter in dark mode.
