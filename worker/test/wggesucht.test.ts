@@ -115,14 +115,19 @@ describe("parseDetailCosts", () => {
 });
 
 describe("search area", () => {
-  it("is a guaranteed superset of the reachable area around every anchor", () => {
+  it("is a guaranteed superset of the reachable area around every anchor and stop", () => {
     const c = settings.criteria;
     const area = searchArea(c);
-    const reachKm = (c.bikeSpeedKmh * c.maxBikeMinutes) / 60;
+    const bikeKm = (c.bikeSpeedKmh * c.maxBikeMinutes) / 60;
+    const stopKm = (c.bikeSpeedKmh * c.maxBikeToStopMinutes) / 60;
     for (const a of c.anchors) {
-      expect(haversineKm(area.lat, area.lng, a.lat, a.lng) + reachKm).toBeLessThanOrEqual(area.radiusM / 1000);
+      expect(haversineKm(area.lat, area.lng, a.lat, a.lng) + bikeKm).toBeLessThanOrEqual(area.radiusM / 1000);
     }
-    expect(area.radiusM).toBe(11300); // 22 km/h x 30 min + 0.28 km anchor spread, rounded up
+    for (const s of c.transitStops) {
+      expect(haversineKm(area.lat, area.lng, s.lat, s.lng) + stopKm).toBeLessThanOrEqual(area.radiusM / 1000);
+    }
+    // Nordfriedhof (11.2 km out) + 10 min x 22 km/h beats 37 min x 22 km/h around the anchors.
+    expect(area.radiusM).toBe(14900);
   });
 
   it("builds the page-0 URL with the rent cap and radius", () => {
@@ -130,7 +135,7 @@ describe("search area", () => {
     expect(url.hostname).toBe("www.wg-gesucht.de");
     expect(url.pathname).toContain("-in-Muenchen.90.0+1+2+3.1.0.html");
     expect(url.searchParams.get("rMax")).toBe("650");
-    expect(url.searchParams.get("radDis")).toBe("11300");
+    expect(url.searchParams.get("radDis")).toBe("14900");
     expect(url.searchParams.getAll("categories[3]")).toEqual(["3"]);
   });
 });

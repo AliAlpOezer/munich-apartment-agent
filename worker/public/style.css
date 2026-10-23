@@ -14,6 +14,7 @@
   --gold-soft: #fdf1e1;
   --danger: #b42318;
   --danger-soft: #fdecea;
+  --transit: #0065ae;
   --ok: #15803d;
   --warn: #a15c07;
   --shadow: 0 1px 2px rgb(28 27 25 / 0.06), 0 2px 8px rgb(28 27 25 / 0.04);
@@ -27,6 +28,7 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
+    --transit: #5aa9e6;
     --bg: #121211;
     --surface: #1c1c1a;
     --surface-2: #252523;
@@ -48,6 +50,7 @@
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
+  --transit: #5aa9e6;
   --bg: #121211;
   --surface: #1c1c1a;
   --surface-2: #252523;
@@ -225,6 +228,8 @@ select {
 .legend:empty { display: none; }
 .legend span { display: inline-flex; align-items: center; gap: 8px; }
 .swatch { width: 16px; height: 12px; border: 1.5px solid var(--accent); border-radius: 3px; background: var(--accent-soft); }
+.swatch.transit { border: 1.5px dashed var(--transit); background: color-mix(in srgb, var(--transit) 12%, transparent); }
+.fact.transit .icon { color: var(--transit); }
 .pin { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--surface); box-shadow: 0 0 0 1px var(--border-strong); }
 .leaflet-container { font: inherit; }
 .leaflet-bar { border: 1px solid var(--border-strong) !important; box-shadow: var(--shadow) !important; }

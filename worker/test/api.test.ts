@@ -24,16 +24,19 @@ beforeEach(async () => {
 
 async function seedListing(): Promise<number> {
   await store.createRun(env.DB, "r0", "cron", {}, "2026-10-22T10:00:00Z");
-  await store.saveSearchResults(env.DB, "wg_gesucht", "r0", "2026-10-22T10:00:00Z", [{
+  await store.saveSearchResults(env.DB, "wg_gesucht", "r0", "2026-10-22T10:00:00Z", "v1", [{
     listing: {
       externalId: "1", url: "https://www.wg-gesucht.de/x.1.html", title: "Room", listingType: "wg_room",
       kindLabel: "3er WG", place: "Garching", street: null, lat: 48.25, lng: 11.65, priceListed: 600,
       sizeSqm: 14, availableFrom: "2026-11-01", availableTo: null,
     },
-    bike: { minutes: 12, km: 4, source: "valhalla", perAnchor: [{ label: "TUM", minutes: 12, km: 4 }] },
+    bike: {
+      minutes: 12, km: 4, source: "valhalla", perAnchor: [{ label: "TUM", minutes: 12, km: 4 }],
+      stop: { label: "Garching", minutes: 3, km: 1 },
+    },
     stage: "pending_detail",
     reasons: [],
-  }], []);
+  }], [], []);
   return (await env.DB.prepare("SELECT id FROM listings").first<number>("id"))!;
 }
 
@@ -43,7 +46,7 @@ describe("reads", () => {
     const body = await res.json<{ criteria: { maxWarmRentEur: number }; searchArea: { radiusM: number }; writesEnabled: boolean }>();
     expect(res.headers.get("cache-control")).toBe("no-store");
     expect(body.criteria.maxWarmRentEur).toBe(650);
-    expect(body.searchArea.radiusM).toBe(11300);
+    expect(body.searchArea.radiusM).toBe(14900);
     expect(body.writesEnabled).toBe(true);
   });
 

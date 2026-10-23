@@ -5,6 +5,9 @@ import type { ListingFacts } from "../src/types";
 
 const criteria: Criteria = {
   anchors: [{ label: "TUM", name: "TUM", lat: 48.26, lng: 11.67 }],
+  transitLine: "U6",
+  transitStops: [{ label: "Freimann", name: "U6 Freimann", lat: 48.19, lng: 11.61 }],
+  maxBikeToStopMinutes: 10,
   maxWarmRentEur: 650,
   minSizeSqm: 10,
   availableBy: "2027-01-31",
@@ -15,7 +18,7 @@ const criteria: Criteria = {
 const today = "2026-10-22";
 const base: ListingFacts = {
   priceListed: 600, priceWarm: null, priceCold: null, sizeSqm: 14,
-  availableFrom: "2026-11-01", availableTo: null, bikeMinutes: 18,
+  availableFrom: "2026-11-01", availableTo: null, bikeMinutes: 18, stopMinutes: null,
 };
 const check = (patch: Partial<ListingFacts>) => evaluate({ ...base, ...patch }, criteria, today);
 
@@ -55,6 +58,14 @@ describe("evaluate", () => {
     expect(check({ availableFrom: null, availableTo: "2026-10-01" }).reasons).toEqual([
       "temporary: only 0 days (until 2026-10-01)",
     ]);
+  });
+
+  it("accepts a long ride when a transit stop is a short ride away", () => {
+    expect(check({ bikeMinutes: 45, stopMinutes: 10 }).matched).toBe(true);
+    expect(check({ bikeMinutes: 45, stopMinutes: 12.4 }).reasons).toEqual([
+      "bike 45 min > 30 min; 12 min to the U6 > 10 min",
+    ]);
+    expect(check({ bikeMinutes: null, stopMinutes: 40 }).matched).toBe(true); // unknown ride keeps
   });
 
   it("rejects commutes over the limit and reports every failed rule", () => {

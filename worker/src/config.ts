@@ -7,6 +7,10 @@ export interface Anchor {
 
 export interface Criteria {
   anchors: Anchor[];
+  /** Stations of a line that reaches the anchors; a short ride to any of them also qualifies. */
+  transitLine: string;
+  transitStops: Anchor[];
+  maxBikeToStopMinutes: number;
   maxWarmRentEur: number;
   minSizeSqm: number;
   availableBy: string; // ISO date: latest acceptable move-in
@@ -52,14 +56,17 @@ function isoDate(env: Record<string, unknown>, key: string): string {
   return v;
 }
 
-function anchors(raw: unknown): Anchor[] {
+function places(env: Record<string, unknown>, key: string, allowEmpty: boolean): Anchor[] {
+  const raw = env[key] ?? (allowEmpty ? [] : undefined);
   const list = typeof raw === "string" ? JSON.parse(raw) : raw;
-  if (!Array.isArray(list) || list.length === 0) throw new Error("config ANCHORS must be a non-empty array");
+  if (!Array.isArray(list) || (!allowEmpty && list.length === 0)) {
+    throw new Error(`config ${key} must be ${allowEmpty ? "an" : "a non-empty"} array`);
+  }
   return list.map((a, i) => {
     const ok =
       a && typeof a.label === "string" && typeof a.name === "string" &&
       Number.isFinite(a.lat) && Number.isFinite(a.lng);
-    if (!ok) throw new Error(`config ANCHORS[${i}] needs label, name, lat, lng`);
+    if (!ok) throw new Error(`config ${key}[${i}] needs label, name, lat, lng`);
     return { label: a.label, name: a.name, lat: a.lat, lng: a.lng };
   });
 }
@@ -70,7 +77,10 @@ export function loadSettings(env: Record<string, unknown>): Settings {
   if (!/^https:\/\//.test(routerUrl)) throw new Error("config ROUTER_URL must be an https URL");
   return {
     criteria: {
-      anchors: anchors(env.ANCHORS),
+      anchors: places(env, "ANCHORS", false),
+      transitLine: String(env.TRANSIT_LINE ?? ""),
+      transitStops: places(env, "TRANSIT_STOPS", true),
+      maxBikeToStopMinutes: num(env, "MAX_BIKE_TO_STOP_MINUTES", 0, 120),
       maxWarmRentEur: num(env, "MAX_WARM_RENT_EUR", 50, 10_000),
       minSizeSqm: num(env, "MIN_SIZE_SQM", 0, 500),
       availableBy: isoDate(env, "AVAILABLE_BY"),

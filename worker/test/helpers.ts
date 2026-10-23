@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import type { Fetcher } from "../src/bike";
-import { loadSettings } from "../src/config";
+import { loadSettings, type Settings } from "../src/config";
 import type { Deps } from "../src/pipeline";
 import type { Job } from "../src/types";
 import searchPage from "./fixtures/search-page.html?raw";
@@ -42,13 +42,13 @@ export function fakeFetcher(routes: Record<string, Route>): Fetcher & { calls: s
   return Object.assign(fn, { calls });
 }
 
-/** Valhalla matrix answer: every source gets `minutes` (or a per-source function) to every target. */
-export function valhallaRoute(minutesFor: (i: number) => number): Route {
+/** Valhalla matrix answer: minutes from source i to target j (anchors first, then stops). */
+export function valhallaRoute(minutes: (i: number, j: number) => number): Route {
   return async (_url, init) => {
     const body = JSON.parse(String(init?.body));
     const rows = body.sources.map((_: unknown, i: number) =>
       body.targets.map((_t: unknown, j: number) => ({
-        from_index: i, to_index: j, time: minutesFor(i) * 60 + j * 30, distance: minutesFor(i) / 3,
+        from_index: i, to_index: j, time: minutes(i, j) * 60, distance: minutes(i, j) / 3,
       })),
     );
     return Response.json({ sources_to_targets: rows });
@@ -58,8 +58,14 @@ export function valhallaRoute(minutesFor: (i: number) => number): Route {
 export const html = (body: string, status = 200) =>
   new Response(body, { status, headers: { "content-type": "text/html; charset=utf-8" } });
 
-export function deps(fetcher: Fetcher, q: FakeQueue, now = new Date("2026-10-22T12:00:00Z")): Deps {
-  return { db: env.DB, jobs: q.queue, fetcher, settings, now: () => now };
+export function deps(
+  fetcher: Fetcher, q: FakeQueue, now = new Date("2026-10-22T12:00:00Z"),
+  criteria: Partial<Settings["criteria"]> = {},
+): Deps {
+  return {
+    db: env.DB, jobs: q.queue, fetcher, now: () => now,
+    settings: { ...settings, criteria: { ...settings.criteria, ...criteria } },
+  };
 }
 
 export { searchPage };

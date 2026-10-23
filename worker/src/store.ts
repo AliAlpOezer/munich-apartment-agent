@@ -1,4 +1,6 @@
 // Every SQL statement lives here. The pipeline writes facts and stage; only setTriage writes triage.
+// Stage moves pending_detail -> matched|rejected, and is re-decided only when the criteria version
+// changes (guarded by criteria_version in the UPDATE).
 
 import type { BikeTime, ScrapedListing, Stage, Triage } from "./types";
 
@@ -26,6 +28,10 @@ export interface ListingRow {
   bike_km: number | null;
   bike_source: BikeTime["source"] | null;
   bike_detail: string | null;
+  stop_label: string | null;
+  stop_minutes: number | null;
+  stop_km: number | null;
+  criteria_version: string | null;
   stage: Stage;
   reasons: string;
   detail_status: "ok" | "failed" | null;
@@ -82,52 +88,83 @@ function chunks<T>(items: T[], size: number): T[][] {
   return out;
 }
 
-export async function existingIds(db: D1Database, source: string, ids: string[]): Promise<Set<string>> {
-  const found = new Set<string>();
+export type KnownListing = Pick<
+  ListingRow,
+  "id" | "external_id" | "stage" | "criteria_version" | "price_warm" | "price_cold" | "detail_status" | "bike_source"
+>;
+
+export async function knownListings(
+  db: D1Database, source: string, ids: string[],
+): Promise<Map<string, KnownListing>> {
+  const found = new Map<string, KnownListing>();
   for (const part of chunks(ids, MAX_PARAMS)) {
     const { results } = await db
       .prepare(
-        `SELECT external_id FROM listings WHERE source = ? AND external_id IN (${part.map(() => "?").join(",")})`,
+        `SELECT id, external_id, stage, criteria_version, price_warm, price_cold, detail_status, bike_source
+         FROM listings WHERE source = ? AND external_id IN (${part.map(() => "?").join(",")})`,
       )
       .bind(source, ...part)
-      .all<{ external_id: string }>();
-    for (const r of results) found.add(r.external_id);
+      .all<KnownListing>();
+    for (const r of results) found.set(r.external_id, r);
   }
   return found;
 }
 
-export interface NewListing {
+export interface Decision {
   listing: ScrapedListing;
   bike: BikeTime | null;
   stage: Stage;
   reasons: string[];
 }
 
-/** Insert first sightings and touch re-sightings in one transaction. A conflicting insert (the row
- *  appeared since `existingIds`) only touches last_seen, so a stage is never overwritten. */
+const bikeColumns = (bike: BikeTime | null) => [
+  bike?.minutes ?? null, bike?.km ?? null, bike?.source ?? null,
+  bike ? JSON.stringify(bike.perAnchor) : null,
+  bike?.stop?.label ?? null, bike?.stop?.minutes ?? null, bike?.stop?.km ?? null,
+];
+
+/** In one transaction: insert first sightings, re-decide listings whose decision predates the
+ *  current criteria, and touch the rest. A conflicting insert (the row appeared since
+ *  `knownListings`) only touches last_seen, and a re-decision only applies while the stored
+ *  criteria version differs or its ride is still an estimate, so a redelivered page can't
+ *  overwrite a newer decision. */
 export async function saveSearchResults(
-  db: D1Database, source: string, runId: string, now: string, fresh: NewListing[], seenAgain: string[],
+  db: D1Database, source: string, runId: string, now: string, criteriaVersion: string,
+  fresh: Decision[], redecided: (Decision & { id: number })[], seenAgain: string[],
 ): Promise<void> {
   const insert = db.prepare(
     `INSERT INTO listings (source, external_id, url, title, listing_type, kind_label, place, street,
        lat, lng, price_listed, size_sqm, available_from, available_to,
-       bike_minutes, bike_km, bike_source, bike_detail, stage, reasons,
-       first_seen_run, last_seen_run, first_seen_at, last_seen_at, decided_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       bike_minutes, bike_km, bike_source, bike_detail, stop_label, stop_minutes, stop_km,
+       stage, reasons, criteria_version, first_seen_run, last_seen_run, first_seen_at, last_seen_at, decided_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (source, external_id) DO UPDATE SET
        last_seen_run = excluded.last_seen_run, last_seen_at = excluded.last_seen_at`,
+  );
+  const redecide = db.prepare(
+    `UPDATE listings SET url = ?, title = ?, kind_label = ?, place = ?, street = ?, lat = ?, lng = ?,
+       price_listed = ?, size_sqm = ?, available_from = ?, available_to = ?,
+       bike_minutes = ?, bike_km = ?, bike_source = ?, bike_detail = ?, stop_label = ?, stop_minutes = ?, stop_km = ?,
+       stage = ?, reasons = ?, criteria_version = ?, last_seen_run = ?, last_seen_at = ?, decided_at = ?
+     WHERE id = ? AND (criteria_version IS NOT ? OR bike_source = 'estimate')`,
   );
   const touch = db.prepare(
     "UPDATE listings SET last_seen_run = ?, last_seen_at = ? WHERE source = ? AND external_id = ?",
   );
+  const decidedAt = (stage: Stage) => (stage === "pending_detail" ? null : now);
   const statements = [
     ...fresh.map(({ listing: l, bike, stage, reasons }) =>
       insert.bind(
         source, l.externalId, l.url, l.title, l.listingType, l.kindLabel, l.place, l.street,
-        l.lat, l.lng, l.priceListed, l.sizeSqm, l.availableFrom, l.availableTo,
-        bike?.minutes ?? null, bike?.km ?? null, bike?.source ?? null,
-        bike ? JSON.stringify(bike.perAnchor) : null, stage, JSON.stringify(reasons),
-        runId, runId, now, now, stage === "rejected" ? now : null,
+        l.lat, l.lng, l.priceListed, l.sizeSqm, l.availableFrom, l.availableTo, ...bikeColumns(bike),
+        stage, JSON.stringify(reasons), criteriaVersion, runId, runId, now, now, decidedAt(stage),
+      ),
+    ),
+    ...redecided.map(({ id, listing: l, bike, stage, reasons }) =>
+      redecide.bind(
+        l.url, l.title, l.kindLabel, l.place, l.street, l.lat, l.lng,
+        l.priceListed, l.sizeSqm, l.availableFrom, l.availableTo, ...bikeColumns(bike),
+        stage, JSON.stringify(reasons), criteriaVersion, runId, now, decidedAt(stage), id, criteriaVersion,
       ),
     ),
     ...seenAgain.map((id) => touch.bind(runId, now, source, id)),
@@ -135,18 +172,18 @@ export async function saveSearchResults(
   if (statements.length) await db.batch(statements);
 }
 
-/** Listings from this page that this run first saw and that still await their detail page. */
+/** Listings on this page that still await their detail page (new, or re-decided into pending). */
 export async function pendingDetailIds(
-  db: D1Database, source: string, runId: string, externalIds: string[],
+  db: D1Database, source: string, externalIds: string[],
 ): Promise<number[]> {
   const out: number[] = [];
   for (const part of chunks(externalIds, MAX_PARAMS)) {
     const { results } = await db
       .prepare(
-        `SELECT id FROM listings WHERE source = ? AND first_seen_run = ? AND stage = 'pending_detail'
+        `SELECT id FROM listings WHERE source = ? AND stage = 'pending_detail'
            AND external_id IN (${part.map(() => "?").join(",")})`,
       )
-      .bind(source, runId, ...part)
+      .bind(source, ...part)
       .all<{ id: number }>();
     out.push(...results.map((r) => r.id));
   }
@@ -171,15 +208,15 @@ export async function getListing(db: D1Database, id: number): Promise<ListingRow
 export async function decideListing(
   db: D1Database, id: number,
   d: { priceWarm: number | null; priceCold: number | null; stage: Exclude<Stage, "pending_detail">;
-       reasons: string[]; detailStatus: "ok" | "failed"; now: string },
+       reasons: string[]; detailStatus: "ok" | "failed"; criteriaVersion: string; now: string },
 ): Promise<boolean> {
   const res = await db
     .prepare(
       `UPDATE listings SET price_warm = ?, price_cold = ?, stage = ?, reasons = ?, detail_status = ?,
-         decided_at = ?
+         criteria_version = ?, decided_at = ?
        WHERE id = ? AND stage = 'pending_detail'`,
     )
-    .bind(d.priceWarm, d.priceCold, d.stage, JSON.stringify(d.reasons), d.detailStatus, d.now, id)
+    .bind(d.priceWarm, d.priceCold, d.stage, JSON.stringify(d.reasons), d.detailStatus, d.criteriaVersion, d.now, id)
     .run();
   return res.meta.changes === 1;
 }

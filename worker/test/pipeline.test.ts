@@ -10,14 +10,17 @@ import { deps, fakeFetcher, fakeQueue, html, searchPage, valhallaRoute, type Rou
 const WG = "https://www.wg-gesucht.de/";
 const ROUTER = "https://valhalla1.openstreetmap.de";
 // Fixture order: Freimann, Neufahrn, Oberschleissheim, Dietersheim, Hasenbergl, Bogenhausen.
-const MINUTES = [28, 24, 31, 9, 36, 40];
+// Router minutes: targets 0-1 are TUM and SAP (SAP 0.5 min slower), 2.. are the U6 stops.
+const BIKE = [35, 24, 38, 9, 42, 45];
+const STOP = [4, 30, 25, 12, 8, 20];
+const minutes = (i: number, j: number) => (j < 2 ? BIKE[i] + j * 0.5 : STOP[i] + (j - 2));
 const SEARCH = `${WG}wg-zimmer-und-1-zimmer-wohnungen-und-wohnungen-und-haeuser-in-Muenchen.90.0+1+2+3.1`;
 const PAGE0 = `${SEARCH}.0.html`;
 const PAGE1 = `${SEARCH}.1.html`;
 
 function routes(overrides: Record<string, Route> = {}) {
   return {
-    [`${ROUTER}/`]: valhallaRoute((i) => MINUTES[i]),
+    [`${ROUTER}/`]: valhallaRoute(minutes),
     [PAGE0]: () => html(searchPage),
     [PAGE1]: () => html(emptyPage),
     [WG]: () => html(detailPage),
@@ -25,8 +28,11 @@ function routes(overrides: Record<string, Route> = {}) {
   };
 }
 
-async function drain(q: ReturnType<typeof fakeQueue>, fetcher: ReturnType<typeof fakeFetcher>, now?: Date) {
-  const d = deps(fetcher, q, now);
+async function drain(
+  q: ReturnType<typeof fakeQueue>, fetcher: ReturnType<typeof fakeFetcher>, now?: Date,
+  criteria: Parameters<typeof deps>[3] = {},
+) {
+  const d = deps(fetcher, q, now, criteria);
   for (let i = 0; i < q.sent.length; i++) {
     const outcome = await handleJob(q.sent[i].body, 1, d);
     expect(outcome).toEqual({ ack: true });
@@ -55,25 +61,55 @@ describe("a full run", () => {
     expect(all).toHaveLength(6);
     const byId = Object.fromEntries(all.map((r) => [r.external_id, r]));
 
-    // Within 30 min of both anchors -> detail fetched -> matched with the resolved warm rent.
-    for (const id of ["7335451", "4061496", "14265492"]) {
+    // Within 37 min of both anchors, or 10 min of the U6 -> detail fetched -> matched with warm rent.
+    for (const id of ["7335451", "4061496", "14265492", "14269724"]) {
       expect(byId[id]).toMatchObject({ stage: "matched", price_warm: 650, price_cold: 600, detail_status: "ok" });
     }
     expect(JSON.parse(byId["14265492"].bike_detail!)).toEqual([
-      { label: "TUM", minutes: 9, km: 3 }, { label: "SAP", minutes: 9.5, km: 3 },
+      { label: "TUM", minutes: 9, km: 3 }, { label: "SAP", minutes: 9.5, km: 3.2 },
     ]);
-    // Too far: rejected on the card, no detail fetch.
+    // Hasenbergl is 42.5 min by bike but 8 min from a U6 stop: the transit commute qualifies it.
+    expect(byId["14269724"]).toMatchObject({ bike_minutes: 42.5, stop_minutes: 8, stop_label: "Garching-Forschungszentrum" });
+    // Too far either way: rejected on the card, no detail fetch.
     expect(byId["3770524"]).toMatchObject({ stage: "rejected", detail_status: null });
-    expect(JSON.parse(byId["3770524"].reasons)).toEqual(["bike 32 min > 30 min"]);
-    expect(JSON.parse(byId["13293325"].reasons)).toEqual(["bike 41 min > 30 min"]);
+    expect(JSON.parse(byId["3770524"].reasons)).toEqual(["bike 39 min > 37 min; 25 min to the U6 > 10 min"]);
+    expect(JSON.parse(byId["13293325"].reasons)).toEqual(["bike 46 min > 37 min; 20 min to the U6 > 10 min"]);
 
     const detailFetches = fetcher.calls.filter((u) => /\.\d+\.html$/.test(u));
-    expect(detailFetches).toHaveLength(3);
+    expect(detailFetches).toHaveLength(4);
 
     const [summary] = await store.runSummaries(env.DB, 1);
     expect(summary).toMatchObject({
-      id: runId, pages_total: 2, pages_done: 2, pages_failed: 0, scraped: 6, new: 6, matched: 3, pending: 0,
+      id: runId, pages_total: 2, pages_done: 2, pages_failed: 0, scraped: 6, new: 6, matched: 4, pending: 0,
     });
+  });
+
+  it("re-decides listings still online after the criteria change, keeping triage", async () => {
+    const q = fakeQueue();
+    const fetcher = fakeFetcher(routes());
+    await startRun(deps(fetcher, q), "cron");
+    await drain(q, fetcher);
+    await env.DB.prepare("UPDATE listings SET triage = 'seen' WHERE external_id = '3770524'").run();
+    const firstDetails = fetcher.calls.filter((u) => /\.\d+\.html$/.test(u)).length;
+
+    // Loosen the bike limit: Oberschleissheim (38.5 min) now qualifies; Bogenhausen (45.5) still doesn't.
+    const later = new Date("2026-10-22T13:00:00Z");
+    const q2 = fakeQueue();
+    await startRun(deps(fetcher, q2, later, { maxBikeMinutes: 40 }), "cron");
+    await drain(q2, fetcher, later, { maxBikeMinutes: 40 });
+
+    const byId = Object.fromEntries((await rows()).map((r) => [r.external_id, r]));
+    expect(byId["3770524"]).toMatchObject({ stage: "matched", triage: "seen", detail_status: "ok" });
+    expect(byId["13293325"].stage).toBe("rejected");
+    expect(JSON.parse(byId["13293325"].reasons)).toEqual(["bike 46 min > 40 min; 20 min to the U6 > 10 min"]);
+    // Already-resolved matches are re-decided from stored rent: only the newly qualifying one is fetched.
+    expect(fetcher.calls.filter((u) => /\.\d+\.html$/.test(u)).length - firstDetails).toBe(1);
+
+    // Same criteria again: nothing to re-decide.
+    const q3 = fakeQueue();
+    await startRun(deps(fetcher, q3, later, { maxBikeMinutes: 40 }), "cron");
+    await drain(q3, fetcher, later, { maxBikeMinutes: 40 });
+    expect(q3.sent.filter((m) => m.body.kind === "detail")).toHaveLength(0);
   });
 
   it("is idempotent under redelivery and only treats unseen listings as new", async () => {
@@ -107,7 +143,7 @@ describe("a full run", () => {
     await startRun(deps(fetcher, q), "cron");
     await drain(q, fetcher);
     const details = q.sent.filter((m) => m.body.kind === "detail").map((m) => m.delaySeconds);
-    expect(details).toEqual([0, 3, 6]);
+    expect(details).toEqual([0, 3, 6, 9]);
   });
 });
 
@@ -166,15 +202,28 @@ describe("failure handling", () => {
     expect(JSON.parse(row!.reasons)).toEqual(["listing no longer online"]);
   });
 
-  it("keeps listings with estimated bike times when the router is down", async () => {
+  it("keeps listings with estimated rides when the router is down, notes it, and re-routes later", async () => {
     const q = fakeQueue();
-    const fetcher = fakeFetcher(routes({ [`${ROUTER}/`]: () => new Response("no", { status: 502 }) }));
-    await startRun(deps(fetcher, q), "cron");
-    await drain(q, fetcher);
+    const down = fakeFetcher(routes({ [`${ROUTER}/`]: () => new Response("no", { status: 502 }) }));
+    await startRun(deps(down, q), "cron");
+    await drain(q, down);
     const all = await rows();
     expect(all.every((r) => r.bike_source === "estimate")).toBe(true);
-    // Dietersheim is ~3 km from TUM: well inside 30 min even as an estimate.
+    // Dietersheim is ~3 km from TUM: well inside the limit even as an estimate.
     expect(all.find((r) => r.external_id === "14265492")?.stage).toBe("matched");
+    const [summary] = await store.runSummaries(env.DB, 1);
+    expect(summary.pages_failed).toBe(0);
+    expect(summary.errors).toMatch(/page 0: router unavailable \(router 502\), rides estimated/);
+
+    // Router back: the next run replaces every estimate with a routed time.
+    const later = new Date("2026-10-22T13:00:00Z");
+    const q2 = fakeQueue();
+    const up = fakeFetcher(routes());
+    await startRun(deps(up, q2, later), "cron");
+    await drain(q2, up, later);
+    const after = await rows();
+    expect(after.every((r) => r.bike_source === "valhalla")).toBe(true);
+    expect(after.find((r) => r.external_id === "13293325")?.stage).toBe("rejected"); // 45.5 min, stop 20
   });
 
   it("refuses URLs outside the source host", async () => {
@@ -193,6 +242,6 @@ describe("failure handling", () => {
     await handleJob(q.sent[0].body, 1, deps(fetcher, q)); // page 0 only; details never processed
     const later = fakeQueue();
     await startRun(deps(fetcher, later, new Date("2026-10-22T14:00:00Z")), "cron");
-    expect(later.sent.filter((m) => m.body.kind === "detail")).toHaveLength(3);
+    expect(later.sent.filter((m) => m.body.kind === "detail")).toHaveLength(4);
   });
 });

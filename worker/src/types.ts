@@ -28,6 +28,7 @@ export interface BikeTime {
   km: number;
   source: "valhalla" | "estimate";
   perAnchor: AnchorTime[];
+  stop: AnchorTime | null; // nearest transit stop by bike, null when no stops are configured
 }
 
 /** The facts the filter decides on. */
@@ -39,6 +40,7 @@ export interface ListingFacts {
   availableFrom: string | null;
   availableTo: string | null;
   bikeMinutes: number | null;
+  stopMinutes: number | null;
 }
 
 export type Stage = "pending_detail" | "matched" | "rejected";

@@ -43,8 +43,14 @@ export function evaluate(f: ListingFacts, c: Criteria, today: string): Verdict {
     }
   }
 
-  if (f.bikeMinutes !== null && f.bikeMinutes > c.maxBikeMinutes) {
-    reasons.push(`bike ${Math.round(f.bikeMinutes)} min > ${c.maxBikeMinutes} min`);
+  // Commute: e-bike to every anchor, or a short ride to the transit line. Unknown keeps.
+  const bikeOk = f.bikeMinutes === null || f.bikeMinutes <= c.maxBikeMinutes;
+  const transitOk = f.stopMinutes !== null && f.stopMinutes <= c.maxBikeToStopMinutes;
+  if (!bikeOk && !transitOk) {
+    const transit = f.stopMinutes !== null
+      ? `; ${Math.round(f.stopMinutes)} min to the ${c.transitLine} > ${c.maxBikeToStopMinutes} min`
+      : "";
+    reasons.push(`bike ${Math.round(f.bikeMinutes!)} min > ${c.maxBikeMinutes} min${transit}`);
   }
 
   return { matched: reasons.length === 0, reasons };

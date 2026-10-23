@@ -1,8 +1,10 @@
 # Garching flat hunt (Cloudflare Worker)
 
-The live agent. One Worker scrapes WG-Gesucht every hour (05:00-22:00 UTC), keeps listings whose
-warm rent is at most 650 EUR, available by 31 Jan 2027 and within a 30-minute e-bike ride
-(22 km/h, routed) of both TUM Garching and SAP Garching, and serves a dashboard with a map.
+The live agent (https://apartment-agent.alialp.workers.dev). One Worker scrapes WG-Gesucht every
+hour (05:00-22:00 UTC), keeps listings whose warm rent is at most 650 EUR, available by 31 Jan 2027,
+and either within a 37-minute e-bike ride (22 km/h, routed) of both TUM Garching and SAP Garching or
+within 10 minutes of a U6 station between Garching-Forschungszentrum and Nordfriedhof, and serves a
+dashboard with a map. Changing a criterion re-decides listings that are still online.
 Design and rejected alternatives:
 [docs/wiki/decisions/cloudflare-workers-hosting.md](../docs/wiki/decisions/cloudflare-workers-hosting.md)
 and [bike-time-filter.md](../docs/wiki/decisions/bike-time-filter.md).
@@ -46,8 +48,9 @@ Settings -> Domains & Routes -> Enable Cloudflare Access).
 
 ## Change the criteria
 
-All knobs are `vars` in `wrangler.jsonc` (anchors, rent cap, size, move-in date, minimum stay, bike
-minutes and speed, page cap, manual-run cooldown, router URL). They are validated on every
+All knobs are `vars` in `wrangler.jsonc` (anchors, transit line and stops, rent cap, size, move-in
+date, minimum stay, bike minutes and speed, minutes to a stop, page cap, manual-run cooldown, router
+URL). They are validated on every
 invocation, so a typo fails loudly. After changing anchors, speed or minutes, regenerate the map
 overlay with `node scripts/isochrone.mjs`. After changing the cron, update `SCHEDULE` in
 `src/config.ts` (a test keeps them in sync). After changing bindings or vars, run `npm run types`.

@@ -32,14 +32,19 @@ export function isSourceUrl(url: string): boolean {
   }
 }
 
-/** Smallest circle around the anchors' centre that contains every point reachable in time.
- *  A route is never shorter than the straight line, so this is a guaranteed superset. */
+/** Smallest circle around the anchors' centre that contains every point reachable in time, by
+ *  bike to the anchors or by a short ride to a transit stop. A route is never shorter than the
+ *  straight line, so this is a guaranteed superset. */
 export function searchArea(c: Criteria): { lat: number; lng: number; radiusM: number } {
   const lat = c.anchors.reduce((s, a) => s + a.lat, 0) / c.anchors.length;
   const lng = c.anchors.reduce((s, a) => s + a.lng, 0) / c.anchors.length;
-  const spread = Math.max(...c.anchors.map((a) => haversineKm(lat, lng, a.lat, a.lng)));
-  const reachKm = (c.bikeSpeedKmh * c.maxBikeMinutes) / 60;
-  return { lat, lng, radiusM: Math.ceil((reachKm + spread) * 1000 / 100) * 100 };
+  const farthest = (places: Criteria["anchors"]) =>
+    Math.max(0, ...places.map((p) => haversineKm(lat, lng, p.lat, p.lng)));
+  const bikeKm = farthest(c.anchors) + (c.bikeSpeedKmh * c.maxBikeMinutes) / 60;
+  const transitKm = c.transitStops.length
+    ? farthest(c.transitStops) + (c.bikeSpeedKmh * c.maxBikeToStopMinutes) / 60
+    : 0;
+  return { lat, lng, radiusM: Math.ceil((Math.max(bikeKm, transitKm) * 1000) / 100) * 100 };
 }
 
 /** Page-0 search: all four categories, rent capped server-side, radius around the anchors.

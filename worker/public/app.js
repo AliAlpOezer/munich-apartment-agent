@@ -131,6 +131,15 @@ function bikeFact(l) {
   return el("span", { class: "fact", title: `${l.bike_km ?? "?"} km by e-bike (slower anchor)` }, icon("bike"), parts.join(" · "));
 }
 
+// Shown only when the short ride to the line is a qualifying commute on its own.
+function transitFact(l) {
+  const c = state.config?.criteria;
+  if (!c || l.stop_minutes == null || l.stop_minutes > c.maxBikeToStopMinutes) return null;
+  const approx = l.bike_source === "estimate" ? "~" : "";
+  return el("span", { class: "fact transit", title: `${l.stop_km ?? "?"} km by e-bike to the station` },
+    icon("train"), `${approx}${Math.round(l.stop_minutes)} min to ${c.transitLine} ${l.stop_label}`);
+}
+
 function availabilityText(l) {
   const today = todayIso();
   const from = !l.available_from || l.available_from <= today ? "available now" : `from ${fmtDay(l.available_from)}`;
@@ -182,6 +191,8 @@ function renderCard(l) {
   node.querySelector(".card-where").textContent = [l.kind_label, l.place, l.street].filter(Boolean).join(" · ");
   const facts = node.querySelector(".card-facts");
   facts.append(bikeFact(l));
+  const transit = transitFact(l);
+  if (transit) facts.append(transit);
   if (l.size_sqm != null) facts.append(el("span", { class: "fact", text: `${l.size_sqm} m²` }));
   facts.append(el("span", { class: "fact", text: availabilityText(l) }));
   node.querySelector(".card-flags").append(...flags(l));
@@ -229,9 +240,13 @@ function renderCriteria() {
   const c = state.config?.criteria;
   if (!c) return;
   const anchors = c.anchors.map((a) => a.label).join(" & ");
+  const transit = c.transitStops.length
+    ? [", or ≤ ", el("b", { text: `${c.maxBikeToStopMinutes} min` }),
+       ` to the ${c.transitLine} (${c.transitStops[0].label} to ${c.transitStops.at(-1).label})`]
+    : [];
   $("#criteria").replaceChildren(
     "≤ ", el("b", { text: `${c.maxWarmRentEur} €` }), " warm · ≤ ", el("b", { text: `${c.maxBikeMinutes} min` }),
-    ` e-bike to ${anchors} · move in by `, el("b", { text: fmtDay(c.availableBy) }),
+    ` e-bike to ${anchors}`, ...transit, " · move in by ", el("b", { text: fmtDay(c.availableBy) }),
   );
 }
 
@@ -294,6 +309,16 @@ async function initMap() {
   fitSearchArea();
   darkQuery.addEventListener("change", renderMarkers);
 
+  if (criteria.transitStops.length) {
+    const line = criteria.transitStops.map((s) => [s.lat, s.lng]);
+    L.polyline(line, { color: cssVar("--transit"), weight: 4, opacity: 0.85, interactive: false }).addTo(map);
+    for (const s of criteria.transitStops) {
+      L.circleMarker([s.lat, s.lng], {
+        radius: 4.5, weight: 2, color: cssVar("--transit"), fillColor: "#ffffff", fillOpacity: 1,
+      }).bindTooltip(s.name, { direction: "right", offset: [6, 0] }).addTo(map);
+    }
+  }
+
   // Labels sit on the side facing away from the other anchors, so close anchors never overlap.
   const meanLng = criteria.anchors.reduce((sum, a) => sum + a.lng, 0) / criteria.anchors.length;
   for (const a of criteria.anchors) {
@@ -311,13 +336,25 @@ async function initMap() {
     if (res.ok) {
       const geo = await res.json();
       // One soft shape per anchor; where they overlap (both commutes fit) the shading deepens.
-      L.geoJSON(geo, {
+      // Stop shapes are drawn lighter: each is a 10-minute ride to one station.
+      const byKind = (kind) => geo.features.filter((f) => (f.properties.kind ?? "anchor") === kind);
+      const anchorsGeo = byKind("anchor");
+      const stopsGeo = byKind("stop");
+      L.geoJSON({ type: "FeatureCollection", features: stopsGeo }, {
+        interactive: false,
+        style: { color: cssVar("--transit"), weight: 1, opacity: 0.6, dashArray: "3 4", fillColor: cssVar("--transit"), fillOpacity: 0.06 },
+      }).addTo(map);
+      L.geoJSON({ type: "FeatureCollection", features: anchorsGeo }, {
         interactive: false,
         style: { color: cssVar("--accent"), weight: 1.5, opacity: 0.7, fillColor: cssVar("--accent"), fillOpacity: 0.08 },
       }).addTo(map);
-      const p = geo.features[0]?.properties;
-      const anchors = geo.features.map((f) => f.properties.anchor).join(" & ");
-      if (p) legend.push(el("span", {}, el("i", { class: "swatch" }), `≤ ${p.minutes} min by e-bike to ${anchors}`));
+      const a = anchorsGeo[0]?.properties;
+      if (a) {
+        const names = anchorsGeo.map((f) => f.properties.anchor).join(" & ");
+        legend.push(el("span", {}, el("i", { class: "swatch" }), `≤ ${a.minutes} min by e-bike to ${names}`));
+      }
+      const s = stopsGeo[0]?.properties;
+      if (s) legend.push(el("span", {}, el("i", { class: "swatch transit" }), `≤ ${s.minutes} min to a ${criteria.transitLine} station`));
     }
   } catch { /* the overlay is optional */ }
   legend.push(el("span", {}, el("i", { class: "pin", style: `background:${cssVar("--accent")}` }), "new"));

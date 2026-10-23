@@ -9,9 +9,19 @@ describe("loadSettings", () => {
   it("reads the deployed criteria", () => {
     const s = loadSettings(vars);
     expect(s.criteria).toMatchObject({
-      maxWarmRentEur: 650, availableBy: "2027-01-31", maxBikeMinutes: 30, bikeSpeedKmh: 22,
+      maxWarmRentEur: 650, availableBy: "2027-01-31", maxBikeMinutes: 37, maxBikeToStopMinutes: 10, bikeSpeedKmh: 22,
     });
     expect(s.criteria.anchors.map((a) => a.label)).toEqual(["TUM", "SAP"]);
+    expect(s.criteria.transitLine).toBe("U6");
+    expect(s.criteria.transitStops.map((t) => t.label)).toEqual([
+      "Garching-Forschungszentrum", "Garching", "Garching-Hochbrück", "Fröttmaning", "Kieferngarten",
+      "Freimann", "Studentenstadt", "Alte Heide", "Nordfriedhof",
+    ]);
+  });
+
+  it("treats transit stops as optional but validates them", () => {
+    expect(loadSettings({ ...vars, TRANSIT_STOPS: [] }).criteria.transitStops).toEqual([]);
+    expect(() => loadSettings({ ...vars, TRANSIT_STOPS: [{ label: "x" }] })).toThrow(/TRANSIT_STOPS\[0\]/);
   });
 
   it("fails loudly on a malformed value instead of filtering wrongly", () => {

@@ -1,4 +1,4 @@
-// Run stages as queue jobs: search page -> (new candidates) -> detail page. Every handler is
+// Run stages as queue jobs: search page -> (new or re-decided candidates) -> detail page. Every handler is
 // idempotent, so at-least-once delivery and overlapping runs are harmless.
 
 import { bikeTimes, type Fetcher } from "./bike";
@@ -47,6 +47,13 @@ async function fetchPage(url: string, fetcher: Fetcher): Promise<Response> {
 }
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+/** Short hash of the criteria. A listing decided under another version is re-decided the next time
+ *  it shows up on a search page, so changing a limit applies to everything still online. */
+export async function criteriaVersion(c: Settings["criteria"]): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(c)));
+  return [...new Uint8Array(digest)].slice(0, 8).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
 
 /** Calendar day in Munich: availability dates on the site are local. */
 export function berlinDay(d: Date): string {
@@ -120,31 +127,51 @@ async function handleSearchPage(
   }
 
   const ids = page.listings.map((l) => l.externalId);
-  const known = await store.existingIds(db, SOURCE, ids);
-  const fresh = page.listings.filter((l) => !known.has(l.externalId));
+  const known = await store.knownListings(db, SOURCE, ids);
+  const version = await criteriaVersion(criteria);
+  // Decide first sightings, and re-decide sightings whose decision predates the current criteria or
+  // rests on an estimated ride (estimates are provisional until the router answers). A pending row
+  // is mid-decision under the current rules and is left alone.
+  const toDecide = page.listings.filter((l) => {
+    const k = known.get(l.externalId);
+    if (!k) return true;
+    return k.stage !== "pending_detail" && (k.criteria_version !== version || k.bike_source === "estimate");
+  });
   const { times, routerError } = await bikeTimes(
-    fresh.map((l) => (l.lat !== null && l.lng !== null ? { lat: l.lat, lng: l.lng } : null)),
-    criteria.anchors, criteria.bikeSpeedKmh, settings.routerUrl, fetcher,
+    toDecide.map((l) => (l.lat !== null && l.lng !== null ? { lat: l.lat, lng: l.lng } : null)),
+    criteria.anchors, criteria.transitStops, criteria.bikeSpeedKmh, settings.routerUrl, fetcher,
   );
   if (routerError) console.warn(`router unavailable, using estimates: ${routerError}`);
 
   const today = berlinDay(deps.now());
-  const decided = fresh.map((listing, i) => {
+  const fresh: store.Decision[] = [];
+  const redecided: (store.Decision & { id: number })[] = [];
+  toDecide.forEach((listing, i) => {
     const bike = times[i];
+    const k = known.get(listing.externalId);
+    const detailDone = k?.detail_status === "ok";
     const facts: ListingFacts = {
-      priceListed: listing.priceListed, priceWarm: null, priceCold: null, sizeSqm: listing.sizeSqm,
-      availableFrom: listing.availableFrom, availableTo: listing.availableTo,
-      bikeMinutes: bike?.minutes ?? null,
+      priceListed: listing.priceListed,
+      priceWarm: detailDone ? k.price_warm : null,
+      priceCold: detailDone ? k.price_cold : null,
+      sizeSqm: listing.sizeSqm, availableFrom: listing.availableFrom, availableTo: listing.availableTo,
+      bikeMinutes: bike?.minutes ?? null, stopMinutes: bike?.stop?.minutes ?? null,
     };
     const verdict = evaluate(facts, criteria, today);
-    return { listing, bike, stage: verdict.matched ? "pending_detail" : "rejected", reasons: verdict.reasons } as const;
+    const stage = !verdict.matched ? "rejected" : detailDone ? "matched" : "pending_detail";
+    const decision = { listing, bike, stage, reasons: verdict.reasons } as const;
+    if (k) redecided.push({ ...decision, id: k.id });
+    else fresh.push(decision);
   });
+  const untouched = ids.filter((id) => known.has(id) && !toDecide.some((l) => l.externalId === id));
 
   const now = nowIso();
-  await store.saveSearchResults(db, SOURCE, job.runId, now, decided, [...known]);
-  await store.recordPage(db, job.runId, job.page, "done", page.listings.length, null, now);
+  await store.saveSearchResults(db, SOURCE, job.runId, now, version, fresh, redecided, untouched);
+  // A router outage doesn't fail the page, but it must be visible in the run history.
+  const note = routerError ? `router unavailable (${routerError}), rides estimated` : null;
+  await store.recordPage(db, job.runId, job.page, "done", page.listings.length, note, now);
 
-  const pending = await store.pendingDetailIds(db, SOURCE, job.runId, ids);
+  const pending = await store.pendingDetailIds(db, SOURCE, ids);
   if (pending.length) {
     await jobs.sendBatch(pending.map((listingId, i) => ({
       body: { kind: "detail", runId: job.runId, listingId }, delaySeconds: i * DETAIL_SPACING_S,
@@ -182,6 +209,7 @@ async function handleDetail(
     {
       priceListed: row.price_listed, priceWarm: warm, priceCold: cold, sizeSqm: row.size_sqm,
       availableFrom: row.available_from, availableTo: row.available_to, bikeMinutes: row.bike_minutes,
+      stopMinutes: row.stop_minutes,
     },
     settings.criteria,
     berlinDay(deps.now()),
@@ -189,7 +217,8 @@ async function handleDetail(
   const reasons = gone ? ["listing no longer online"] : verdict.reasons;
   await store.decideListing(db, row.id, {
     priceWarm: warm, priceCold: cold, stage: !gone && verdict.matched ? "matched" : "rejected",
-    reasons, detailStatus, now: deps.now().toISOString(),
+    reasons, detailStatus, criteriaVersion: await criteriaVersion(settings.criteria),
+    now: deps.now().toISOString(),
   });
   return ACK;
 }
