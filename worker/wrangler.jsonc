@@ -4,6 +4,8 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
   "observability": { "enabled": true },
+  // Declared so generated types don't depend on a local .dev.vars; set with `wrangler secret put`.
+  "secrets": { "required": ["API_TOKEN"] },
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",

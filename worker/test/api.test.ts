@@ -69,7 +69,7 @@ describe("reads", () => {
 
 describe("writes", () => {
   it("fail closed without the API_TOKEN secret", async () => {
-    const res = await call("/api/run", post(undefined), { ...env, API_TOKEN: undefined });
+    const res = await call("/api/run", post(undefined), { ...env, API_TOKEN: undefined } as unknown as Env);
     expect(res.status).toBe(503);
   });
 
