@@ -20,7 +20,8 @@ only (no Telegram). Branch `garching-cloudflare`.
   (free limit 10 ms); detail pages are now streamed into HTMLRewriter to widen the margin.
 - Cron confirmed: 09:00, 10:00, 11:00 UTC runs all done (08:00 was missed right after deploy).
 - 2026-10-23 widening deployed (migration 0002 applied remotely). Its first run had every ride
-  estimated (router 100-pair cap); fixed and redeployed; a follow-up run re-routes the estimates.
+  estimated (router 100-pair cap); fixed and redeployed. The 12:00 UTC cron re-routed all 116 with
+  Valhalla: 37 matched (17 by bike, 20 only via U6, all near Nordfriedhof), 79 rejected.
 - Open: search-page CPU not measured yet (detail jobs 5-8 ms of the free 10 ms). If search pages
   approach 10 ms, cut the HTML before parsing or move to Workers Paid.
 
