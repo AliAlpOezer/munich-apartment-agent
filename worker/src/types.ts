@@ -1,6 +1,7 @@
 export type ListingType = "wg_room" | "studio" | "flat" | "house" | "unknown";
 
-/** What one search-result card tells us. Lister identity is deliberately not parsed. */
+/** What one search-result card tells us. Lister identity is deliberately not parsed. Facts a source
+ *  only publishes on its detail page are null here (see `Source.detailOnly`). */
 export interface ScrapedListing {
   externalId: string;
   url: string;
@@ -15,6 +16,7 @@ export interface ScrapedListing {
   sizeSqm: number | null;
   availableFrom: string | null; // ISO date; null = available now
   availableTo: string | null; // ISO date; set for temporary sublets
+  swap: boolean; // flat swap (Tausch): needs a flat of the user's own in exchange
 }
 
 export interface AnchorTime {
@@ -41,6 +43,7 @@ export interface ListingFacts {
   availableTo: string | null;
   bikeMinutes: number | null;
   stopMinutes: number | null;
+  swap: boolean;
 }
 
 export type Stage = "pending_detail" | "matched" | "rejected";
@@ -48,5 +51,6 @@ export type Triage = "new" | "seen" | "interested" | "dismissed";
 export const TRIAGE_VALUES: readonly Triage[] = ["new", "seen", "interested", "dismissed"];
 
 export type Job =
-  | { kind: "search"; runId: string; page: number; url: string }
+  // `stream` is absent on messages enqueued before Kleinanzeigen was added (WG-Gesucht only).
+  | { kind: "search"; runId: string; stream?: string; page: number; url: string }
   | { kind: "detail"; runId: string; listingId: number };

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { haversineKm } from "../src/bike";
+import { searchArea } from "../src/sources";
 import {
-  buildSearchUrl, classifyCostLabel, extractJsonArray, parseDetailCosts, parseSearchPage, searchArea,
+  buildSearchUrl, classifyCostLabel, extractJsonArray, parseDetailCosts, parseSearchPage,
 } from "../src/wggesucht";
 import detailPage from "./fixtures/detail.html?raw";
 import emptyPage from "./fixtures/search-empty.html?raw";
@@ -33,6 +34,7 @@ describe("parseSearchPage (live layout, 2026-10-22)", () => {
       sizeSqm: 13,
       availableFrom: "2026-10-23",
       availableTo: null,
+      swap: false,
     });
     const freimann = listings.find((l) => l.externalId === "7335451")!;
     expect(freimann.title).toBe("Möbliertes WG - Zimmer in Einfamilienhaus für Studenten und Praktikanten");

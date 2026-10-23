@@ -1,8 +1,10 @@
 import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
+import { kleinanzeigen } from "../src/kleinanzeigen";
 import { handleJob, MAX_FETCH_ATTEMPTS, startRun } from "../src/pipeline";
 import * as store from "../src/store";
 import type { Job } from "../src/types";
+import { wgGesucht } from "../src/wggesucht";
 import detailPage from "./fixtures/detail.html?raw";
 import emptyPage from "./fixtures/search-empty.html?raw";
 import { deps, fakeFetcher, fakeQueue, html, searchPage, valhallaRoute, type Route } from "./helpers";
@@ -224,6 +226,20 @@ describe("failure handling", () => {
     const after = await rows();
     expect(after.every((r) => r.bike_source === "valhalla")).toBe(true);
     expect(after.find((r) => r.external_id === "13293325")?.stage).toBe("rejected"); // 45.5 min, stop 20
+  });
+
+  it("keeps one source's results when the other is blocked, and shows the failure", async () => {
+    const q = fakeQueue();
+    const fetcher = fakeFetcher(routes({ "https://www.kleinanzeigen.de/": () => html("Access Denied", 403) }));
+    const d = deps(fetcher, q, undefined, {}, [wgGesucht, kleinanzeigen]);
+    await startRun(d, "cron");
+    for (let i = 0; i < q.sent.length; i++) {
+      expect(await handleJob(q.sent[i].body, MAX_FETCH_ATTEMPTS, d)).toEqual({ ack: true });
+    }
+    expect((await rows()).filter((r) => r.stage === "matched")).toHaveLength(4);
+    const [summary] = await store.runSummaries(env.DB, 1);
+    expect(summary).toMatchObject({ pages_total: 5, pages_done: 5, pages_failed: 3, matched: 4 });
+    expect(summary.errors).toContain("kleinanzeigen:wg page 0: fetch failed: HTTP 403");
   });
 
   it("refuses URLs outside the source host", async () => {

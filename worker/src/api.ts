@@ -5,7 +5,7 @@ import { nextScheduledRun } from "./config";
 import { startRun, type Deps } from "./pipeline";
 import * as store from "./store";
 import { TRIAGE_VALUES, type Triage } from "./types";
-import { searchArea } from "./wggesucht";
+import { searchArea } from "./sources";
 
 const STALLED_AFTER_MS = 30 * 60 * 1000;
 const REJECTED_WINDOW_MS = 14 * 86_400_000;
@@ -32,7 +32,7 @@ export type RunStatus = "queued" | "running" | "done" | "failed" | "stalled";
 
 export function runStatus(r: store.RunSummaryRow, now: Date): RunStatus {
   if (r.pages_failed > 0) return "failed";
-  if (r.pages_total !== null && r.pages_done >= r.pages_total && r.pending === 0) return "done";
+  if (r.pages_total > 0 && r.pages_done >= r.pages_total && r.pending === 0) return "done";
   const lastActivity = Date.parse(r.last_page_at ?? r.created_at);
   if (now.getTime() - lastActivity > STALLED_AFTER_MS) return "stalled";
   return r.pages_done === 0 ? "queued" : "running";
@@ -51,6 +51,7 @@ export async function handleApi(req: Request, env: Env, deps: Deps): Promise<Res
     return json({
       criteria: deps.settings.criteria,
       searchArea: searchArea(deps.settings.criteria),
+      sources: deps.settings.sources.map(({ id, label, origin }) => ({ id, label, origin })),
       writesEnabled: Boolean(env.API_TOKEN),
     });
   }

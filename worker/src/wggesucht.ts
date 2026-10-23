@@ -12,40 +12,13 @@
 // Coordinates are not on the card: the page's map config carries `markers: [{lat, lng, offer_id}]`.
 
 import type { Criteria } from "./config";
-import { haversineKm } from "./bike";
-import { cleanText, decodeEntities, parseGermanDates, parseGermanNumber, rewrite } from "./html";
+import { cleanText, decodeEntities, MIN_PLAUSIBLE_RENT_EUR, parseGermanDates, parseGermanNumber, rewrite } from "./html";
+import { mentionsSwap, searchArea, type SearchPage, type Source } from "./sources";
 import type { ListingType, ScrapedListing } from "./types";
 
-export const SOURCE = "wg_gesucht";
 const ORIGIN = "https://www.wg-gesucht.de";
 const MUNICH_CITY_ID = 90;
 const SEARCH_PATH = `/wg-zimmer-und-1-zimmer-wohnungen-und-wohnungen-und-haeuser-in-Muenchen.${MUNICH_CITY_ID}.0+1+2+3.1.0.html`;
-// A real monthly rent is never a couple of euros; listers sometimes type placeholders like "2 €".
-const MIN_PLAUSIBLE_RENT_EUR = 50;
-
-export function isSourceUrl(url: string): boolean {
-  try {
-    const u = new URL(url);
-    return u.protocol === "https:" && u.hostname === "www.wg-gesucht.de";
-  } catch {
-    return false;
-  }
-}
-
-/** Smallest circle around the anchors' centre that contains every point reachable in time, by
- *  bike to the anchors or by a short ride to a transit stop. A route is never shorter than the
- *  straight line, so this is a guaranteed superset. */
-export function searchArea(c: Criteria): { lat: number; lng: number; radiusM: number } {
-  const lat = c.anchors.reduce((s, a) => s + a.lat, 0) / c.anchors.length;
-  const lng = c.anchors.reduce((s, a) => s + a.lng, 0) / c.anchors.length;
-  const farthest = (places: Criteria["anchors"]) =>
-    Math.max(0, ...places.map((p) => haversineKm(lat, lng, p.lat, p.lng)));
-  const bikeKm = farthest(c.anchors) + (c.bikeSpeedKmh * c.maxBikeMinutes) / 60;
-  const transitKm = c.transitStops.length
-    ? farthest(c.transitStops) + (c.bikeSpeedKmh * c.maxBikeToStopMinutes) / 60
-    : 0;
-  return { lat, lng, radiusM: Math.ceil((Math.max(bikeKm, transitKm) * 1000) / 100) * 100 };
-}
 
 /** Page-0 search: all four categories, rent capped server-side, radius around the anchors.
  *  Param format mirrors the site's own pagination links. Size and dates are filtered locally. */
@@ -60,15 +33,6 @@ export function buildSearchUrl(c: Criteria): string {
     `radLat=${area.lat.toFixed(6)}`, `radLng=${area.lng.toFixed(6)}`, `radDis=${area.radiusM}`,
   ];
   return `${ORIGIN}${SEARCH_PATH}?${params.join("&")}`;
-}
-
-export interface SearchPage {
-  listings: ScrapedListing[];
-  markerCount: number;
-  /** Further result pages linked from this one, by page index (1-based beyond page 0). */
-  pageUrls: Map<number, string>;
-  /** The page explicitly says the search has no results. */
-  zeroResults: boolean;
 }
 
 function listingTypeFromHref(href: string): ListingType {
@@ -140,7 +104,7 @@ interface CardDraft {
   middleText: string;
 }
 
-export async function parseSearchPage(html: string): Promise<SearchPage> {
+export async function parseSearchPage(html: string): Promise<SearchPage & { markerCount: number }> {
   const drafts: CardDraft[] = [];
   let cur: CardDraft | null = null;
   const inCard = (fn: (c: CardDraft, text: string) => void) => ({
@@ -210,6 +174,7 @@ export async function parseSearchPage(html: string): Promise<SearchPage> {
       sizeSqm: parseGermanNumber(cleanText(d.sizeText)),
       availableFrom: dates[0] ?? null,
       availableTo: dates[1] ?? null,
+      swap: mentionsSwap(d.title),
     });
   }
 
@@ -218,6 +183,7 @@ export async function parseSearchPage(html: string): Promise<SearchPage> {
     markerCount: markers.size,
     pageUrls: parsePageUrls(html),
     zeroResults: /\b0 Angebote\b/.test(html),
+    emptyHint: `${markers.size} map markers`,
   };
 }
 
@@ -305,3 +271,14 @@ export async function parseDetailCosts(html: string | Response): Promise<DetailC
   if (warm === null && cold !== null && seenExtra) warm = cold + extras;
   return { warm, cold };
 }
+
+export const wgGesucht: Source = {
+  id: "wg_gesucht",
+  label: "WG-Gesucht",
+  origin: ORIGIN,
+  // Cards carry dates, and the map markers carry positions.
+  detailOnly: { position: false, availability: false },
+  streams: (c) => [{ stream: "wg_gesucht", url: buildSearchUrl(c) }],
+  parseSearchPage: async (res) => parseSearchPage(await res.text()),
+  parseDetail: (res) => parseDetailCosts(res),
+};

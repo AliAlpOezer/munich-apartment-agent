@@ -1,5 +1,8 @@
 // HTMLRewriter hands over raw source text: entities are not decoded and text arrives in chunks.
 
+// A real monthly rent is never a couple of euros; listers type placeholders like "2 €" or "1 € VB".
+export const MIN_PLAUSIBLE_RENT_EUR = 50;
+
 const NAMED: Record<string, string> = {
   amp: "&",
   lt: "<",
@@ -27,6 +30,11 @@ export function decodeEntities(s: string): string {
     }
     return NAMED[ref] ?? whole;
   });
+}
+
+/** Markup removed, each tag leaving a space so adjacent texts stay apart. */
+export function stripTags(s: string): string {
+  return s.replace(/<[^>]*>/g, " ");
 }
 
 /** Decode entities and collapse all whitespace (including nbsp) to single spaces. */

@@ -2,6 +2,7 @@
 // Stage moves pending_detail -> matched|rejected, and is re-decided only when the criteria version
 // changes (guarded by criteria_version in the UPDATE).
 
+import type { Point } from "./bike";
 import type { BikeTime, ScrapedListing, Stage, Triage } from "./types";
 
 const MAX_PARAMS = 90; // D1 allows 100 bound parameters per statement
@@ -31,6 +32,7 @@ export interface ListingRow {
   stop_label: string | null;
   stop_minutes: number | null;
   stop_km: number | null;
+  swap: 0 | 1;
   criteria_version: string | null;
   stage: Stage;
   reasons: string;
@@ -56,29 +58,38 @@ export async function lastRunCreatedAt(db: D1Database): Promise<string | null> {
   return db.prepare("SELECT MAX(created_at) AS at FROM runs").first<string>("at");
 }
 
-export async function pagesTotal(db: D1Database, runId: string): Promise<number | null> {
-  return db.prepare("SELECT pages_total FROM runs WHERE id = ?").bind(runId).first<number>("pages_total");
-}
-
-export async function setPagesTotal(db: D1Database, runId: string, total: number): Promise<void> {
-  await db
-    .prepare("UPDATE runs SET pages_total = ? WHERE id = ? AND pages_total IS NULL")
-    .bind(total, runId)
-    .run();
+/** Claim pages of a stream for this run; returns the ones not claimed before, which the caller
+ *  must enqueue. Claiming under the primary key makes "each page once per run" structural. */
+export async function claimPages(
+  db: D1Database, runId: string, stream: string, pages: number[], now: string,
+): Promise<number[]> {
+  const claimed: number[] = [];
+  for (const part of chunks(pages, Math.floor(MAX_PARAMS / 4))) {
+    const { results } = await db
+      .prepare(
+        `INSERT INTO run_pages (run_id, stream, page, status, queued_at)
+         VALUES ${part.map(() => "(?, ?, ?, 'queued', ?)").join(", ")}
+         ON CONFLICT (run_id, stream, page) DO NOTHING RETURNING page`,
+      )
+      .bind(...part.flatMap((page) => [runId, stream, page, now]))
+      .all<{ page: number }>();
+    claimed.push(...results.map((r) => r.page));
+  }
+  return claimed.sort((a, b) => a - b);
 }
 
 export async function recordPage(
-  db: D1Database, runId: string, page: number, status: "done" | "failed", cards: number,
+  db: D1Database, runId: string, stream: string, page: number, status: "done" | "failed", cards: number,
   error: string | null, now: string,
 ): Promise<void> {
   await db
     .prepare(
-      `INSERT INTO run_pages (run_id, page, status, cards, error, finished_at) VALUES (?, ?, ?, ?, ?, ?)
-       ON CONFLICT (run_id, page) DO UPDATE SET
+      `INSERT INTO run_pages (run_id, stream, page, status, cards, error, finished_at) VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (run_id, stream, page) DO UPDATE SET
          status = excluded.status, cards = excluded.cards, error = excluded.error,
          finished_at = excluded.finished_at`,
     )
-    .bind(runId, page, status, cards, error, now)
+    .bind(runId, stream, page, status, cards, error, now)
     .run();
 }
 
@@ -90,7 +101,8 @@ function chunks<T>(items: T[], size: number): T[][] {
 
 export type KnownListing = Pick<
   ListingRow,
-  "id" | "external_id" | "stage" | "criteria_version" | "price_warm" | "price_cold" | "detail_status" | "bike_source"
+  | "id" | "external_id" | "stage" | "criteria_version" | "price_warm" | "price_cold" | "detail_status"
+  | "bike_source" | "lat" | "lng" | "available_from" | "available_to" | "swap"
 >;
 
 export async function knownListings(
@@ -100,7 +112,8 @@ export async function knownListings(
   for (const part of chunks(ids, MAX_PARAMS)) {
     const { results } = await db
       .prepare(
-        `SELECT id, external_id, stage, criteria_version, price_warm, price_cold, detail_status, bike_source
+        `SELECT id, external_id, stage, criteria_version, price_warm, price_cold, detail_status, bike_source,
+           lat, lng, available_from, available_to, swap
          FROM listings WHERE source = ? AND external_id IN (${part.map(() => "?").join(",")})`,
       )
       .bind(source, ...part)
@@ -135,9 +148,9 @@ export async function saveSearchResults(
   const insert = db.prepare(
     `INSERT INTO listings (source, external_id, url, title, listing_type, kind_label, place, street,
        lat, lng, price_listed, size_sqm, available_from, available_to,
-       bike_minutes, bike_km, bike_source, bike_detail, stop_label, stop_minutes, stop_km,
+       bike_minutes, bike_km, bike_source, bike_detail, stop_label, stop_minutes, stop_km, swap,
        stage, reasons, criteria_version, first_seen_run, last_seen_run, first_seen_at, last_seen_at, decided_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (source, external_id) DO UPDATE SET
        last_seen_run = excluded.last_seen_run, last_seen_at = excluded.last_seen_at`,
   );
@@ -145,7 +158,7 @@ export async function saveSearchResults(
     `UPDATE listings SET url = ?, title = ?, kind_label = ?, place = ?, street = ?, lat = ?, lng = ?,
        price_listed = ?, size_sqm = ?, available_from = ?, available_to = ?,
        bike_minutes = ?, bike_km = ?, bike_source = ?, bike_detail = ?, stop_label = ?, stop_minutes = ?, stop_km = ?,
-       stage = ?, reasons = ?, criteria_version = ?, last_seen_run = ?, last_seen_at = ?, decided_at = ?
+       swap = ?, stage = ?, reasons = ?, criteria_version = ?, last_seen_run = ?, last_seen_at = ?, decided_at = ?
      WHERE id = ? AND (criteria_version IS NOT ? OR bike_source = 'estimate')`,
   );
   const touch = db.prepare(
@@ -157,14 +170,14 @@ export async function saveSearchResults(
       insert.bind(
         source, l.externalId, l.url, l.title, l.listingType, l.kindLabel, l.place, l.street,
         l.lat, l.lng, l.priceListed, l.sizeSqm, l.availableFrom, l.availableTo, ...bikeColumns(bike),
-        stage, JSON.stringify(reasons), criteriaVersion, runId, runId, now, now, decidedAt(stage),
+        Number(l.swap), stage, JSON.stringify(reasons), criteriaVersion, runId, runId, now, now, decidedAt(stage),
       ),
     ),
     ...redecided.map(({ id, listing: l, bike, stage, reasons }) =>
       redecide.bind(
         l.url, l.title, l.kindLabel, l.place, l.street, l.lat, l.lng,
         l.priceListed, l.sizeSqm, l.availableFrom, l.availableTo, ...bikeColumns(bike),
-        stage, JSON.stringify(reasons), criteriaVersion, runId, now, decidedAt(stage), id, criteriaVersion,
+        Number(l.swap), stage, JSON.stringify(reasons), criteriaVersion, runId, now, decidedAt(stage), id, criteriaVersion,
       ),
     ),
     ...seenAgain.map((id) => touch.bind(runId, now, source, id)),
@@ -203,20 +216,43 @@ export async function getListing(db: D1Database, id: number): Promise<ListingRow
   return db.prepare("SELECT * FROM listings WHERE id = ?").bind(id).first<ListingRow>();
 }
 
+/** What a detail page added beyond rent. Each is written only when present; else the row keeps its value. */
+export interface DetailUpdate {
+  position: Point | null;
+  bike: BikeTime | null; // routed from `position`
+  availableFrom: string | null;
+  sizeSqm: number | null;
+  swap: boolean;
+}
+
 /** The only stage transition: pending_detail -> matched | rejected. Returns false if it already
  *  happened (redelivered message), so a decision is never made twice. */
 export async function decideListing(
   db: D1Database, id: number,
   d: { priceWarm: number | null; priceCold: number | null; stage: Exclude<Stage, "pending_detail">;
-       reasons: string[]; detailStatus: "ok" | "failed"; criteriaVersion: string; now: string },
+       reasons: string[]; detailStatus: "ok" | "failed"; criteriaVersion: string; now: string;
+       detail: DetailUpdate },
 ): Promise<boolean> {
+  const { position, bike, availableFrom, sizeSqm, swap } = d.detail;
+  // A ride is written only together with the position it was routed from.
+  const routed = Number(bike !== null);
   const res = await db
     .prepare(
       `UPDATE listings SET price_warm = ?, price_cold = ?, stage = ?, reasons = ?, detail_status = ?,
-         criteria_version = ?, decided_at = ?
+         criteria_version = ?, decided_at = ?,
+         lat = COALESCE(?, lat), lng = COALESCE(?, lng), available_from = COALESCE(?, available_from),
+         size_sqm = COALESCE(size_sqm, ?), swap = MAX(swap, ?),
+         bike_minutes = IIF(?, ?, bike_minutes), bike_km = IIF(?, ?, bike_km),
+         bike_source = IIF(?, ?, bike_source), bike_detail = IIF(?, ?, bike_detail),
+         stop_label = IIF(?, ?, stop_label), stop_minutes = IIF(?, ?, stop_minutes), stop_km = IIF(?, ?, stop_km)
        WHERE id = ? AND stage = 'pending_detail'`,
     )
-    .bind(d.priceWarm, d.priceCold, d.stage, JSON.stringify(d.reasons), d.detailStatus, d.criteriaVersion, d.now, id)
+    .bind(
+      d.priceWarm, d.priceCold, d.stage, JSON.stringify(d.reasons), d.detailStatus, d.criteriaVersion, d.now,
+      position?.lat ?? null, position?.lng ?? null, availableFrom, sizeSqm, Number(swap),
+      ...bikeColumns(bike).flatMap((v) => [routed, v]),
+      id,
+    )
     .run();
   return res.meta.changes === 1;
 }
@@ -244,7 +280,7 @@ export interface RunSummaryRow {
   id: string;
   trigger: "cron" | "manual";
   created_at: string;
-  pages_total: number | null;
+  pages_total: number; // pages claimed so far; grows while pages link to further pages
   pages_done: number;
   pages_failed: number;
   errors: string | null;
@@ -258,10 +294,11 @@ export interface RunSummaryRow {
 export async function runSummaries(db: D1Database, limit: number): Promise<RunSummaryRow[]> {
   const { results } = await db
     .prepare(
-      `SELECT r.id, r.trigger, r.created_at, r.pages_total,
-         (SELECT COUNT(*) FROM run_pages p WHERE p.run_id = r.id) AS pages_done,
+      `SELECT r.id, r.trigger, r.created_at,
+         (SELECT COUNT(*) FROM run_pages p WHERE p.run_id = r.id) AS pages_total,
+         (SELECT COUNT(*) FROM run_pages p WHERE p.run_id = r.id AND p.status != 'queued') AS pages_done,
          (SELECT COUNT(*) FROM run_pages p WHERE p.run_id = r.id AND p.status = 'failed') AS pages_failed,
-         (SELECT group_concat('page ' || p.page || ': ' || p.error, '; ') FROM run_pages p
+         (SELECT group_concat(p.stream || ' page ' || p.page || ': ' || p.error, '; ') FROM run_pages p
             WHERE p.run_id = r.id AND p.error IS NOT NULL) AS errors,
          (SELECT MAX(p.finished_at) FROM run_pages p WHERE p.run_id = r.id) AS last_page_at,
          (SELECT COALESCE(SUM(p.cards), 0) FROM run_pages p WHERE p.run_id = r.id) AS scraped,

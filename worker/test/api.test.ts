@@ -2,11 +2,12 @@ import { env, exports as workerExports } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
 import { handleApi, runStatus } from "../src/api";
 import * as store from "../src/store";
-import { deps, fakeFetcher, fakeQueue } from "./helpers";
+import { deps, fakeFetcher, fakeQueue, settings } from "./helpers";
 
 const NOW = new Date("2026-10-22T12:00:00Z");
+// The sources configured in wrangler.jsonc: the API never fetches listings itself.
 const call = (path: string, init: RequestInit = {}, e: Env = env, q = fakeQueue()) =>
-  handleApi(new Request(`https://agent.test${path}`, init), e, deps(fakeFetcher({}), q, NOW));
+  handleApi(new Request(`https://agent.test${path}`, init), e, deps(fakeFetcher({}), q, NOW, {}, settings.sources));
 const post = (body?: unknown, token: string | null = "test-token") =>
   ({
     method: "POST",
@@ -28,7 +29,7 @@ async function seedListing(): Promise<number> {
     listing: {
       externalId: "1", url: "https://www.wg-gesucht.de/x.1.html", title: "Room", listingType: "wg_room",
       kindLabel: "3er WG", place: "Garching", street: null, lat: 48.25, lng: 11.65, priceListed: 600,
-      sizeSqm: 14, availableFrom: "2026-11-01", availableTo: null,
+      sizeSqm: 14, availableFrom: "2026-11-01", availableTo: null, swap: false,
     },
     bike: {
       minutes: 12, km: 4, source: "valhalla", perAnchor: [{ label: "TUM", minutes: 12, km: 4 }],
@@ -43,11 +44,18 @@ async function seedListing(): Promise<number> {
 describe("reads", () => {
   it("exposes the criteria and whether writes are enabled", async () => {
     const res = await call("/api/config");
-    const body = await res.json<{ criteria: { maxWarmRentEur: number }; searchArea: { radiusM: number }; writesEnabled: boolean }>();
+    const body = await res.json<{
+      criteria: { maxWarmRentEur: number }; searchArea: { radiusM: number }; writesEnabled: boolean;
+      sources: { id: string; label: string; origin: string }[];
+    }>();
     expect(res.headers.get("cache-control")).toBe("no-store");
     expect(body.criteria.maxWarmRentEur).toBe(650);
     expect(body.searchArea.radiusM).toBe(14900);
     expect(body.writesEnabled).toBe(true);
+    expect(body.sources).toEqual([
+      { id: "wg_gesucht", label: "WG-Gesucht", origin: "https://www.wg-gesucht.de" },
+      { id: "kleinanzeigen", label: "Kleinanzeigen", origin: "https://www.kleinanzeigen.de" },
+    ]);
   });
 
   it("lists listings with JSON columns decoded", async () => {
@@ -82,7 +90,10 @@ describe("writes", () => {
     const q = fakeQueue();
     const res = await call("/api/run", post(undefined), env, q);
     expect(res.status).toBe(202);
-    expect(q.sent.map((m) => m.body.kind)).toEqual(["search"]);
+    // Page 0 of every search stream, spaced out.
+    expect(q.sent.map((m) => [(m.body as { stream?: string }).stream, m.delaySeconds])).toEqual([
+      ["wg_gesucht", 0], ["kleinanzeigen:wohnung", 5], ["kleinanzeigen:wg", 10], ["kleinanzeigen:haus", 15],
+    ]);
     const again = await call("/api/run", post(undefined), env, q);
     expect(again.status).toBe(429);
     expect(again.headers.get("retry-after")).toBe("600");
@@ -105,7 +116,9 @@ describe("runStatus", () => {
   it("derives the state from page and listing progress", () => {
     expect(runStatus(base, NOW)).toBe("done");
     expect(runStatus({ ...base, pending: 1 }, NOW)).toBe("running");
-    expect(runStatus({ ...base, pages_total: null, pages_done: 0, last_page_at: null }, NOW)).toBe("queued");
+    expect(runStatus({ ...base, pages_total: 4, pages_done: 0, last_page_at: null }, NOW)).toBe("queued");
+    // A page linked from a later page extends the run: not done while it is still queued.
+    expect(runStatus({ ...base, pages_total: 3 }, NOW)).toBe("running");
     expect(runStatus({ ...base, pages_failed: 1 }, NOW)).toBe("failed");
     expect(runStatus({ ...base, pending: 1, last_page_at: "2026-10-22T11:00:00Z" }, NOW)).toBe("stalled");
   });

@@ -1,7 +1,7 @@
 # Garching flat hunt (Cloudflare Worker)
 
-The live agent (https://apartment-agent.alialp.workers.dev). One Worker scrapes WG-Gesucht every
-hour (05:00-22:00 UTC), keeps listings whose warm rent is at most 650 EUR, available by 31 Jan 2027,
+The live agent (https://apartment-agent.alialp.workers.dev). One Worker scrapes WG-Gesucht and
+Kleinanzeigen (flats, WG/temporary, houses) every hour (05:00-22:00 UTC), keeps listings whose warm rent is at most 650 EUR, available by 31 Jan 2027,
 and either within a 37-minute e-bike ride (22 km/h, routed) of both TUM Garching and SAP Garching or
 within 10 minutes of a U6 station between Garching-Forschungszentrum and Nordfriedhof, and serves a
 dashboard with a map. Changing a criterion re-decides listings that are still online.
@@ -58,7 +58,10 @@ overlay with `node scripts/isochrone.mjs`. After changing the cron, update `SCHE
 ## Operate
 
 - Run history and errors: the status pill in the dashboard header, or `GET /api/runs`.
-- A run marked **failed** with "0 cards parsed" means WG-Gesucht changed its HTML: update the
-  selectors in `src/wggesucht.ts` and refresh `test/fixtures/` from a live page (anonymize lister
-  names, photos and initials).
+- A run marked **failed** with "0 cards parsed" means a site changed its HTML; the error names the
+  stream (`wg_gesucht`, `kleinanzeigen:wg`, ...). Update `src/wggesucht.ts` or `src/kleinanzeigen.ts`
+  and refresh `test/fixtures/` from a live page (anonymize lister names, photos, initials and
+  descriptions).
+- A site that starts blocking (HTTP 403 pages): remove it from `SOURCES` in `wrangler.jsonc` and
+  redeploy; the other keeps running.
 - Logs: `npx wrangler tail` or Workers Observability in the dashboard.
