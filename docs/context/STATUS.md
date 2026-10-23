@@ -37,6 +37,9 @@ only (no Telegram). Branch `garching-cloudflare`.
 
 ## Recently landed
 
+- 2026-10-23 dashboard compound sort: up to three keys (biggest room, cheapest, best EUR/m2,
+  shortest ride, newest), default size -> rent -> ride, kept per browser; cards show EUR/m2.
+
 - 2026-10-22 `worker/`: TypeScript Worker (cron + Queues + D1 + static dashboard with map), 49
   tests passing in workerd, live local run: 38 listings scraped, 12 matched.
 - 2026-10-22 Python parser moved to selectolax's lexbor backend (selectolax 1.0 dropped the old

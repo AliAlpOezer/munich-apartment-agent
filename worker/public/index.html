@@ -47,20 +47,13 @@
   <div class="layout" id="layout" data-pane="list">
     <section class="list-pane" aria-label="Listings">
       <div class="toolbar">
-        <nav class="tabs" id="tabs" role="tablist" aria-label="Listing views"></nav>
-        <div class="toolbar-end">
-          <label class="sort">
-            <span class="visually-hidden">Sort by</span>
-            <select id="sort">
-              <option value="newest">Newest first</option>
-              <option value="bike">Shortest ride</option>
-              <option value="price">Cheapest</option>
-            </select>
-          </label>
+        <div class="toolbar-row">
+          <nav class="tabs" id="tabs" role="tablist" aria-label="Listing views"></nav>
           <button id="pane-toggle" class="btn icon-only pane-toggle" type="button" aria-label="Show map">
             <svg class="icon"><use href="#i-map"/></svg>
           </button>
         </div>
+        <div class="sort-chain" id="sort" role="group" aria-label="Sort order"></div>
       </div>
       <div id="banner" class="banner" hidden></div>
       <ol id="cards" class="cards" aria-live="polite"></ol>

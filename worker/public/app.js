@@ -13,7 +13,7 @@ const state = {
   runs: [],
   nextRunAt: null,
   tab: null,
-  sort: "newest",
+  sortKeys: ["size", "rent", "ride"],
 };
 
 // localStorage can be missing or throw (private mode, blocked storage): it only holds conveniences.
@@ -96,14 +96,72 @@ const TABS = [
   { id: "dismissed", label: "Dismissed", pick: (s) => s.listings.filter((l) => l.triage === "dismissed") },
   { id: "rejected", label: "Rejected", pick: (s) => s.rejected },
 ];
-const SORTS = {
-  newest: (a, b) => b.first_seen_at.localeCompare(a.first_seen_at) || b.id - a.id,
-  bike: (a, b) => (a.bike_minutes ?? Infinity) - (b.bike_minutes ?? Infinity),
-  price: (a, b) => (rent(a) ?? Infinity) - (rent(b) ?? Infinity),
+// Compound sort: up to three keys applied in order; later keys only break ties of earlier ones.
+// Unknown values (no size, no rent) always sort last, whatever the direction.
+const perSqm = (l) => (rent(l) != null && l.size_sqm ? rent(l) / l.size_sqm : null);
+const byNumber = (get, dir) => (a, b) => {
+  const x = get(a);
+  const y = get(b);
+  if (x == null || y == null) return (x == null) - (y == null);
+  return dir * (x - y);
 };
+const SORT_KEYS = {
+  size: { label: "Biggest room", cmp: byNumber((l) => l.size_sqm, -1) },
+  rent: { label: "Cheapest", cmp: byNumber(rent, 1) },
+  value: { label: "Best €/m²", cmp: byNumber(perSqm, 1) },
+  ride: { label: "Shortest ride", cmp: byNumber((l) => l.bike_minutes, 1) },
+  newest: { label: "Newest", cmp: (a, b) => b.first_seen_at.localeCompare(a.first_seen_at) },
+};
+const SORT_LEVELS = 3;
+
+function compareListings(a, b) {
+  for (const key of state.sortKeys) {
+    const d = SORT_KEYS[key]?.cmp(a, b) ?? 0;
+    if (d) return d;
+  }
+  return b.first_seen_at.localeCompare(a.first_seen_at) || b.id - a.id; // stable final tie-break
+}
 
 const currentTab = () => TABS.find((t) => t.id === state.tab) ?? TABS[2];
-const visibleListings = () => [...currentTab().pick(state)].sort(SORTS[state.sort] ?? SORTS.newest);
+const visibleListings = () => [...currentTab().pick(state)].sort(compareListings);
+
+function renderSortChain() {
+  const chain = $("#sort");
+  const parts = [];
+  for (let level = 0; level < SORT_LEVELS; level++) {
+    const current = state.sortKeys[level] ?? "";
+    // A key already used at an earlier level adds nothing, so it is not offered again.
+    const used = new Set(state.sortKeys.slice(0, level));
+    const select = el("select", { "aria-label": level ? `Then sort by (${level + 1})` : "Sort by", "data-level": String(level) });
+    if (level > 0) select.append(el("option", { value: "", text: "—" }));
+    for (const [key, { label }] of Object.entries(SORT_KEYS)) {
+      if (!used.has(key)) select.append(el("option", { value: key, text: label }));
+    }
+    select.value = current;
+    select.addEventListener("change", () => setSortKey(level, select.value));
+    parts.push(el("span", { class: "sort-label", text: level ? "then" : "Sort by" }), select);
+    if (!current) break; // nothing after an empty level
+  }
+  chain.replaceChildren(...parts);
+}
+
+function setSortKey(level, key) {
+  const keys = state.sortKeys.slice(0, level);
+  if (key) keys.push(key, ...state.sortKeys.slice(level + 1).filter((k) => k !== key && !keys.includes(k)));
+  state.sortKeys = keys.slice(0, SORT_LEVELS);
+  saved.set("sortKeys", JSON.stringify(state.sortKeys));
+  renderSortChain();
+  render();
+}
+
+function loadSortKeys() {
+  try {
+    const keys = JSON.parse(saved.get("sortKeys") ?? "null");
+    if (Array.isArray(keys) && keys.length && keys.every((k) => k in SORT_KEYS)) {
+      state.sortKeys = [...new Set(keys)].slice(0, SORT_LEVELS);
+    }
+  } catch { /* keep the default */ }
+}
 
 function renderTabs() {
   const nav = $("#tabs");
@@ -193,7 +251,11 @@ function renderCard(l) {
   facts.append(bikeFact(l));
   const transit = transitFact(l);
   if (transit) facts.append(transit);
-  if (l.size_sqm != null) facts.append(el("span", { class: "fact", text: `${l.size_sqm} m²` }));
+  if (l.size_sqm != null) {
+    const value = perSqm(l);
+    facts.append(el("span", { class: "fact" }, `${l.size_sqm} m²`,
+      value != null ? el("span", { class: "muted", text: ` · ${Math.round(value)} €/m²` }) : null));
+  }
   facts.append(el("span", { class: "fact", text: availabilityText(l) }));
   node.querySelector(".card-flags").append(...flags(l));
   if (l.stage === "rejected") node.querySelector(".card-reasons").textContent = l.reasons.join(" · ");
@@ -500,14 +562,8 @@ async function refresh() {
 }
 
 async function boot() {
-  const sort = saved.get("sort");
-  if (sort && SORTS[sort]) state.sort = sort;
-  $("#sort").value = state.sort;
-  $("#sort").addEventListener("change", (e) => {
-    state.sort = e.target.value;
-    saved.set("sort", state.sort);
-    render();
-  });
+  loadSortKeys();
+  renderSortChain();
   $("#search-btn").addEventListener("click", searchNow);
   $("#settings-btn").addEventListener("click", () => openSettings());
   $("#settings").addEventListener("close", () => {
