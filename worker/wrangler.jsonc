@@ -17,7 +17,7 @@
     {
       "binding": "DB",
       "database_name": "apartments",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "f3f89f94-dd25-4b1c-addd-96025800f18c",
       "migrations_dir": "migrations"
     }
   ],
