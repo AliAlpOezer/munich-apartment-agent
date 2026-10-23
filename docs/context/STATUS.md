@@ -1,6 +1,6 @@
 # Status — munich-apartment-agent
 
-Last updated: 2026-10-22
+Last updated: 2026-10-23
 
 ## Current focus
 
@@ -17,7 +17,13 @@ e-bike (22 km/h, routed), dashboard only (no Telegram). Branch `garching-cloudfl
 
 ## Blocked
 
-- Deploy is blocked on the user logging in to Cloudflare (`npx wrangler login`).
+- Deploy is blocked on Cloudflare auth. 2026-10-23: `! cd worker && npx wrangler login` from inside
+  Claude Code opened the OAuth page but timed out waiting for consent (the `!` command is
+  backgrounded after 120 s); `wrangler whoami` still says the stored token expired. Fix: run
+  `npx wrangler login` in your own terminal in `worker/` and approve in the browser within a minute
+  or so, then the agent continues: `wrangler d1 create apartments` (paste `database_id` into
+  `wrangler.jsonc`), `wrangler queues create apartment-jobs`, `npm run db:migrate:remote`,
+  `npm run deploy`; the user sets `npx wrangler secret put API_TOKEN` themselves.
 
 ## Next up
 

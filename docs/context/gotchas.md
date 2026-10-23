@@ -20,6 +20,17 @@ Fix: `worker/public/style.css` has `[hidden] { display: none !important; }`; kee
 Cause: selectolax 1.0 removed `selectolax.parser`.
 Fix: already moved to `selectolax.lexbor` (2026-10-22). Applies only to the retired Python code.
 
+### wrangler on Windows ends with "Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)" and exit 127
+Cause: a libuv teardown crash in Node on Windows after wrangler has finished its work.
+Fix: read the output, not the exit code (e.g. `wrangler types --check` printed "up to date" and
+still exited 127). CI on Linux is unaffected.
+
+### `@cloudflare/vitest-pool-workers` is deprecated
+Cause: renamed to `@cloudflare/vitest-plugin` (`cloudflareTest()` Vite plugin, `cloudflare:workers`
+for `env`/`exports`). Each plugin release pins an exact wrangler/miniflare version.
+Fix: upgrade the plugin and wrangler together (2026-10-22 pair: plugin 1.4.0 + wrangler 4.149.0 +
+vitest 4.1.12, chosen because older pairs carried sharp and vitest-mocker advisories).
+
 ## Legacy: Python box deploy (retired 2026-10-22)
 
 
