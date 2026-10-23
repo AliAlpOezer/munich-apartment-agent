@@ -23,7 +23,8 @@ import time
 from datetime import UTC, date, datetime
 from urllib.parse import quote_plus
 
-from selectolax.parser import HTMLParser, Node
+from selectolax.lexbor import LexborHTMLParser as HTMLParser
+from selectolax.lexbor import LexborNode as Node
 
 from apartment_agent.models import FilterConfig, Listing, ListingType
 from apartment_agent.retry import network_retry

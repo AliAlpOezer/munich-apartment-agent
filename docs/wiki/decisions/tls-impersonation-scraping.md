@@ -7,6 +7,8 @@ tags: [decision, scraping, curl-cffi, playwright, anti-bot]
 timestamp: 2026-07-12T00:00:00Z
 ---
 
+> **Superseded 2026-10-22** by [cloudflare-workers-hosting.md](cloudflare-workers-hosting.md): a plain fetch with browser headers got `200` from WG-Gesucht, and the Worker cannot run curl-cffi. Revisit with Cloudflare Browser Rendering if Worker egress gets blocked.
+
 ## Context
 
 WG-Gesucht actively blocks bots. Plain HTTP requests (Python `requests`) get rejected because the server can tell from the **TLS handshake fingerprint** that they aren't a real browser. But driving a full browser for every page is slow and heavy.

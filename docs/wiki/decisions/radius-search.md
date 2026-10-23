@@ -7,6 +7,8 @@ tags: [decision, search, geography, filter]
 timestamp: 2026-07-12T00:00:00Z
 ---
 
+> **Superseded 2026-10-22** by [bike-time-filter.md](bike-time-filter.md): the anchor moved to Garching and routed e-bike minutes now decide.
+
 ## Context
 
 The user wants flats near a specific spot (Alte Heide, north Munich), not "anywhere in Munich." Two ways to express "near": name the acceptable districts, or draw a circle.

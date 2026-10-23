@@ -20,7 +20,7 @@ dependencies = [
     "python-dateutil>=2.9",
     # Scraping
     "curl-cffi>=0.7",               # browser-TLS-impersonating HTTP client
-    "selectolax>=0.3",              # fast HTML parsing
+    "selectolax>=0.3.21",           # fast HTML parsing (lexbor backend)
     "beautifulsoup4>=4.12",         # fallback parsing
     "tenacity>=8.3",                # retries/backoff
     # Storage + notify (SQLite via the stdlib `sqlite3`; no external DB dependency)

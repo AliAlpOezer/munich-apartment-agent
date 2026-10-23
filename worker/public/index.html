@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Garching Flat Hunt</title>
+  <meta name="description" content="WG rooms and flats within a 30-minute e-bike ride of TUM and SAP Garching." />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230f766e'/%3E%3Cpath d='M8 17l8-7 8 7v8h-5v-5h-6v5H8z' fill='white'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"
+    integrity="sha512-h9FcoyWjHcOcmEVkxOfTLnmZFWIH0iZhZT1H2TbOq55xssQGEJHEaIm+PgoUaZbRvQTNTluNOEfb1ZRy6D3BOw=="
+    crossorigin="anonymous" referrerpolicy="no-referrer" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-bike" viewBox="0 0 24 24"><circle cx="5.5" cy="17" r="3.5"/><circle cx="18.5" cy="17" r="3.5"/><path d="M5.5 17l4-8h6l3 8M9.5 9l3.5 8h-7.5M14 5.5h2.5l1 3.5"/></symbol>
+    <symbol id="i-train" viewBox="0 0 24 24"><rect x="5.5" y="3.5" width="13" height="13.5" rx="3"/><path d="M5.5 11h13M9 20.5l1.5-3.5M15 20.5l-1.5-3.5"/><circle cx="9" cy="14" r=".6"/><circle cx="15" cy="14" r=".6"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.3 5.9.9-4.25 4.1 1 5.85L12 16.9l-5.25 2.75 1-5.85L3.5 9.7l5.9-.9z"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></symbol>
+    <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14L4.5 9.5 9 5"/><path d="M4.5 9.5H14a5.5 5.5 0 010 11h-3"/></symbol>
+    <symbol id="i-out" viewBox="0 0 24 24"><path d="M14 4.5h5.5V10M19.5 4.5L11 13M17 14v4.5a1 1 0 01-1 1H6.5a1 1 0 01-1-1V9a1 1 0 011-1H11"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l4.5 4.5"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="3.5"/><path d="M10.5 12.5L19 4M16 7l2.5 2.5M14 9l2 2"/></symbol>
+    <symbol id="i-map" viewBox="0 0 24 24"><path d="M3.5 6.5l5.5-2 6 2 5.5-2v13l-5.5 2-6-2-5.5 2z"/><path d="M9 4.5v13M15 6.5v13"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24"><path d="M8.5 6.5h11M8.5 12h11M8.5 17.5h11"/><circle cx="4.5" cy="6.5" r=".6"/><circle cx="4.5" cy="12" r=".6"/><circle cx="4.5" cy="17.5" r=".6"/></symbol>
+  </svg>
+
+  <header class="topbar">
+    <div class="brand">
+      <h1>Garching flat hunt</h1>
+      <p id="criteria" class="criteria">Loading criteria…</p>
+    </div>
+    <div class="actions">
+      <button id="run-status" class="status" type="button" aria-haspopup="dialog">
+        <span class="dot" aria-hidden="true"></span><span id="run-status-text">…</span>
+      </button>
+      <button id="search-btn" class="btn primary" type="button">
+        <svg class="icon"><use href="#i-search"/></svg><span>Search now</span>
+      </button>
+      <button id="settings-btn" class="btn icon-only" type="button" aria-label="Access token" title="Access token">
+        <svg class="icon"><use href="#i-key"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="layout" id="layout" data-pane="list">
+    <section class="list-pane" aria-label="Listings">
+      <div class="toolbar">
+        <div class="toolbar-row">
+          <nav class="tabs" id="tabs" role="tablist" aria-label="Listing views"></nav>
+          <button id="pane-toggle" class="btn icon-only pane-toggle" type="button" aria-label="Show map">
+            <svg class="icon"><use href="#i-map"/></svg>
+          </button>
+        </div>
+        <div class="sort-chain" id="sort" role="group" aria-label="Sort order"></div>
+      </div>
+      <div id="banner" class="banner" hidden></div>
+      <ol id="cards" class="cards" aria-live="polite"></ol>
+      <div id="empty" class="empty" hidden></div>
+    </section>
+    <section class="map-pane" aria-label="Map">
+      <div id="map"></div>
+      <div class="legend" id="legend"></div>
+    </section>
+  </div>
+
+  <dialog id="settings" class="dialog">
+    <form method="dialog" id="settings-form">
+      <h2>Access token</h2>
+      <p class="muted">Needed for <em>Search now</em> and for marking listings. It's the <code>API_TOKEN</code> secret
+        of the Worker, kept only in this browser.</p>
+      <p id="settings-msg" class="error" role="alert" hidden></p>
+      <p id="writes-disabled" class="warn" hidden>The Worker has no <code>API_TOKEN</code> secret yet, so changes are
+        turned off. Set one with <code>npx wrangler secret put API_TOKEN</code>.</p>
+      <label class="field">Token <input id="token" type="password" autocomplete="current-password" spellcheck="false" /></label>
+      <div class="dialog-actions">
+        <button class="btn" value="cancel" formnovalidate>Cancel</button>
+        <button class="btn primary" value="save" id="token-save">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="runs" class="dialog wide">
+    <form method="dialog">
+      <h2>Recent runs</h2>
+      <div class="table-wrap">
+        <table class="runs">
+          <thead><tr><th>Started</th><th>Trigger</th><th>Status</th><th class="num">Scraped</th><th class="num">New</th><th class="num">Matched</th></tr></thead>
+          <tbody id="runs-body"></tbody>
+        </table>
+      </div>
+      <p id="runs-next" class="muted"></p>
+      <div class="dialog-actions"><button class="btn" value="close">Close</button></div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" hidden></div>
+
+  <template id="card-tpl">
+    <li class="card">
+      <div class="card-main">
+        <div class="card-title-row">
+          <span class="badge new">New</span>
+          <a class="card-title" target="_blank" rel="noopener noreferrer"></a>
+        </div>
+        <p class="card-where"></p>
+        <p class="card-facts"></p>
+        <p class="card-flags"></p>
+        <p class="card-reasons"></p>
+      </div>
+      <div class="card-side">
+        <div class="price"><span class="price-main"></span><span class="price-sub"></span></div>
+        <div class="card-actions"></div>
+      </div>
+    </li>
+  </template>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"
+    integrity="sha512-puJW3E/qXDqYp9IfhAI54BJEaWIfloJ7JWs7OeD5i6ruC9JZL1gERT1wjtwXFlh7CjE7ZJ+/vcRZRkIYIb6p4g=="
+    crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="/app.js"></script>
+</body>
+</html>

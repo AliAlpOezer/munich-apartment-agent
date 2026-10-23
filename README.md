@@ -1,5 +1,10 @@
 # 🏠 Munich Apartment-Hunter Agent
 
+> **2026-10-22: the live agent is now a Cloudflare Worker in [`worker/`](worker/README.md)**,
+> hunting around Garching (TUM + SAP): warm rent at most 650 EUR, at most 30 minutes by e-bike
+> (routed), shown on a map dashboard. The Python/LangGraph pipeline described below is retired;
+> its LLM ranking, knowledge wiki and feedback parts will be ported in a second pass.
+
 An autonomous **LangGraph** agent that wakes every 3 hours, scrapes Munich housing listings
 (WG-Gesucht first) against hard filters, deduplicates against a local **SQLite** database, and pushes
 new matches to **Telegram** — built to survive a brutally tight rental market where good listings

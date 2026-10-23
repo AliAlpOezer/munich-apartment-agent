@@ -1,0 +1,72 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "apartment-agent",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "observability": { "enabled": true },
+  // Declared so generated types don't depend on a local .dev.vars; set with `wrangler secret put`.
+  "secrets": { "required": ["API_TOKEN"] },
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  // Hourly, 05:00-22:00 UTC (06/07-23/24 Berlin). Each run is 1-2 search pages plus one detail
+  // page per new candidate, serialized through the queue below.
+  "triggers": { "crons": ["0 5-22 * * *"] },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "apartments",
+      "database_id": "f3f89f94-dd25-4b1c-addd-96025800f18c",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "queues": {
+    "producers": [{ "binding": "JOBS", "queue": "apartment-jobs" }],
+    "consumers": [
+      {
+        "queue": "apartment-jobs",
+        // One message at a time: every outbound scrape is serialized (politeness, no overlap).
+        "max_batch_size": 1,
+        "max_batch_timeout": 1,
+        "max_concurrency": 1,
+        // Handlers retry fetch failures themselves (see pipeline.ts); this is the safety net for
+        // unexpected throws such as a D1 outage.
+        "max_retries": 5,
+        "retry_delay": 60
+      }
+    ]
+  },
+  "vars": {
+    "ANCHORS": [
+      { "label": "TUM", "name": "TUM Campus Garching (CIT)", "lat": 48.2625535, "lng": 11.6680432 },
+      { "label": "SAP", "name": "SAP Labs Munich, Garching", "lat": 48.2641004, "lng": 11.6607557 }
+    ],
+    "MAX_WARM_RENT_EUR": 650,
+    // Alternative commute: a short ride to any U6 station between the campus and Nordfriedhof
+    // (OSM station nodes, fetched 2026-10-23).
+    "TRANSIT_LINE": "U6",
+    "TRANSIT_STOPS": [
+      { "label": "Garching-Forschungszentrum", "name": "U6 Garching-Forschungszentrum", "lat": 48.264741, "lng": 11.671405 },
+      { "label": "Garching", "name": "U6 Garching", "lat": 48.249285, "lng": 11.652533 },
+      { "label": "Garching-Hochbrück", "name": "U6 Garching-Hochbrück", "lat": 48.247361, "lng": 11.631093 },
+      { "label": "Fröttmaning", "name": "U6 Fröttmaning", "lat": 48.211886, "lng": 11.616713 },
+      { "label": "Kieferngarten", "name": "U6 Kieferngarten", "lat": 48.203841, "lng": 11.613242 },
+      { "label": "Freimann", "name": "U6 Freimann", "lat": 48.191958, "lng": 11.614275 },
+      { "label": "Studentenstadt", "name": "U6 Studentenstadt", "lat": 48.183494, "lng": 11.60763 },
+      { "label": "Alte Heide", "name": "U6 Alte Heide", "lat": 48.178552, "lng": 11.602555 },
+      { "label": "Nordfriedhof", "name": "U6 Nordfriedhof", "lat": 48.173188, "lng": 11.596986 }
+    ],
+    "MAX_BIKE_TO_STOP_MINUTES": 10,
+    "MIN_SIZE_SQM": 10,
+    "AVAILABLE_BY": "2027-01-31",
+    "MIN_STAY_DAYS": 90,
+    "MAX_BIKE_MINUTES": 37,
+    "BIKE_SPEED_KMH": 22,
+    "MAX_PAGES": 8,
+    "MANUAL_RUN_COOLDOWN_MINUTES": 10,
+    "ROUTER_URL": "https://valhalla1.openstreetmap.de"
+  }
+}
