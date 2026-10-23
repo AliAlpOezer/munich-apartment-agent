@@ -48,7 +48,8 @@ export function parseGermanDates(text: string): string[] {
   return [...text.matchAll(/(\d{2})\.(\d{2})\.(\d{4})/g)].map(([, d, m, y]) => `${y}-${m}-${d}`);
 }
 
-/** Run an HTMLRewriter over a string to completion. */
-export async function rewrite(html: string, rewriter: HTMLRewriter): Promise<void> {
-  await rewriter.transform(new Response(html)).arrayBuffer();
+/** Run an HTMLRewriter to completion. Passing the fetch Response streams it, skipping a
+ *  decode-to-string and re-encode (CPU matters: the free plan allows 10 ms per invocation). */
+export async function rewrite(input: string | Response, rewriter: HTMLRewriter): Promise<void> {
+  await rewriter.transform(typeof input === "string" ? new Response(input) : input).arrayBuffer();
 }

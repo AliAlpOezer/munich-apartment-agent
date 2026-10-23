@@ -40,10 +40,10 @@ export class HttpError extends Error {
   }
 }
 
-async function fetchPage(url: string, fetcher: Fetcher): Promise<string> {
+async function fetchPage(url: string, fetcher: Fetcher): Promise<Response> {
   const res = await fetcher(url, { headers: BROWSER_HEADERS, signal: AbortSignal.timeout(20_000) });
   if (!res.ok) throw new HttpError(res.status, url);
-  return res.text();
+  return res;
 }
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -93,7 +93,7 @@ async function handleSearchPage(
 
   let html: string;
   try {
-    html = await fetchPage(job.url, fetcher);
+    html = await (await fetchPage(job.url, fetcher)).text();
   } catch (e) {
     const retry = retryOrGiveUp(attempts);
     if (retry) return retry;

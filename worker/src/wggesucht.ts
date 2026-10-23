@@ -262,7 +262,7 @@ export interface DetailCosts {
   cold: number | null;
 }
 
-export async function parseDetailCosts(html: string): Promise<DetailCosts> {
+export async function parseDetailCosts(html: string | Response): Promise<DetailCosts> {
   const families: Record<"fact" | "panel", Token[]> = { fact: [], panel: [] };
   const capture = (family: "fact" | "panel", role: Token["role"]) => ({
     element() {
