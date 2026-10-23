@@ -38,6 +38,24 @@ for `env`/`exports`). Each plugin release pins an exact wrangler/miniflare versi
 Fix: upgrade the plugin and wrangler together (2026-10-22 pair: plugin 1.4.0 + wrangler 4.149.0 +
 vitest 4.1.12, chosen because older pairs carried sharp and vitest-mocker advisories).
 
+### A Kleinanzeigen page fails with "0 cards parsed (N cards in the result list)"
+Cause: Kleinanzeigen changed its card markup. Cards are found as `<article data-adid data-href>`
+inside `ul#srchrslt-adtable`, and their texts are classified by shape (zip + place, facts line,
+price), not by Tailwind classes, so only a structural change should break this.
+Fix: update `worker/src/kleinanzeigen.ts` from a live page, rebuild the trimmed fixtures
+(`worker/test/fixtures/ka-*.html`: keep the markup, drop scripts, SVGs, images and descriptions),
+rerun `npm test`. If Kleinanzeigen starts answering 403 or a challenge instead, drop
+`"kleinanzeigen"` from `SOURCES` in `wrangler.jsonc` and redeploy; WG-Gesucht carries on.
+
+### Measuring Worker CPU: local timings don't transfer
+Cause: the vitest/workerd harness runs several times slower than Cloudflare and unevenly (the 9 KB
+WG-Gesucht fixture took 5 ms locally; a 726 KB Kleinanzeigen search page 13 ms locally, 4 ms on the
+edge). Fresh deploys also run cold isolates, which spike.
+Fix: measure on Cloudflare. Deploy a throwaway Worker that parses bundled captures (no outbound
+fetches), run `wrangler tail <name> --format json` (each event carries `cpuTime` and `wallTime` in
+whole ms; the tail samples, so send more requests than you need), warm it up first, and A/B
+variants inside one deployment. Delete it after (`wrangler delete --name <name>`).
+
 ## Legacy: Python box deploy (retired 2026-10-22)
 
 

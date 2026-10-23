@@ -1,6 +1,6 @@
 # Status — munich-apartment-agent
 
-Last updated: 2026-10-23 (afternoon)
+Last updated: 2026-10-23 (late afternoon)
 
 ## Current focus
 
@@ -24,6 +24,18 @@ only (no Telegram). Branch `garching-cloudflare`.
   Valhalla: 37 matched (17 by bike, 20 only via U6, all near Nordfriedhof), 79 rejected.
 - Open: search-page CPU not measured yet (detail jobs 5-8 ms of the free 10 ms). If search pages
   approach 10 ms, cut the HTML before parsing or move to Workers Paid.
+- Kleinanzeigen as a second source: built on branch `kleinanzeigen-source`, **not deployed**;
+  migration `0003_search_streams.sql` not yet applied remotely. Design, evidence and rejected
+  alternatives: `docs/wiki/decisions/kleinanzeigen-source.md`. 78 tests pass.
+  - Edge CPU of the adapter (throwaway Worker, 2026-10-23): search page median 4 ms (3-9), detail
+    page 2 ms (0-3).
+  - Migration 0003 verified on a local copy of production (`wrangler d1 export --remote`): 8 runs,
+    32 pages, 117 listings kept, FK check clean.
+  - Live local run on that copy (17 pages, 0 failed): Kleinanzeigen 240 new listings, 15 matched,
+    134/134 detail pages parsed with a position; WG-Gesucht still 37 matched after re-decision.
+  - Deploy order: `npm run db:migrate:remote`, then `npm run deploy`. The first run re-decides every
+    WG-Gesucht listing still online (`RULES_REVISION` changed the criteria version) and fetches
+    roughly 130 Kleinanzeigen detail pages, 3 s apart.
 
 ## Blocked
 
