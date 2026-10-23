@@ -1,6 +1,6 @@
 # Status — munich-apartment-agent
 
-Last updated: 2026-10-23 (late afternoon)
+Last updated: 2026-10-23 (evening)
 
 ## Current focus
 
@@ -22,20 +22,14 @@ only (no Telegram). Branch `garching-cloudflare`.
 - 2026-10-23 widening deployed (migration 0002 applied remotely). Its first run had every ride
   estimated (router 100-pair cap); fixed and redeployed. The 12:00 UTC cron re-routed all 116 with
   Valhalla: 37 matched (17 by bike, 20 only via U6, all near Nordfriedhof), 79 rejected.
-- Open: search-page CPU not measured yet (detail jobs 5-8 ms of the free 10 ms). If search pages
-  approach 10 ms, cut the HTML before parsing or move to Workers Paid.
-- Kleinanzeigen as a second source: built on branch `kleinanzeigen-source`, **not deployed**;
-  migration `0003_search_streams.sql` not yet applied remotely. Design, evidence and rejected
-  alternatives: `docs/wiki/decisions/kleinanzeigen-source.md`. 78 tests pass.
-  - Edge CPU of the adapter (throwaway Worker, 2026-10-23): search page median 4 ms (3-9), detail
-    page 2 ms (0-3).
-  - Migration 0003 verified on a local copy of production (`wrangler d1 export --remote`): 8 runs,
-    32 pages, 117 listings kept, FK check clean.
-  - Live local run on that copy (17 pages, 0 failed): Kleinanzeigen 240 new listings, 15 matched,
-    134/134 detail pages parsed with a position; WG-Gesucht still 37 matched after re-decision.
-  - Deploy order: `npm run db:migrate:remote`, then `npm run deploy`. The first run re-decides every
-    WG-Gesucht listing still online (`RULES_REVISION` changed the criteria version) and fetches
-    roughly 130 Kleinanzeigen detail pages, 3 s apart.
+- 2026-10-23 15:17 UTC: **Kleinanzeigen live** (branch `kleinanzeigen-source`, version `0f0a1a08`,
+  migration 0003 applied remotely; D1 bookmark before it:
+  `0000001a-00000004-0000510d-f1e4c9e2b2e7c0056fee784b90b37ce6`). First production run: 17 pages,
+  0 failed, 240 new Kleinanzeigen listings, 15 matched; WG-Gesucht unchanged at 37 matched. Design:
+  `docs/wiki/decisions/kleinanzeigen-source.md`. Swaps stay rejected (user's call, 2026-10-23).
+- CPU in production (`wrangler tail --format json`, that run): queue jobs n=153, median 4 ms, p90
+  9 ms, max 56 ms; 12 over 10 ms, none failed for CPU. `/api/listings` now median 10 ms, max 19 ms
+  (about 350 rows). Watch observability for 1102 errors; the fallback is Workers Paid.
 
 ## Blocked
 
@@ -43,11 +37,18 @@ only (no Telegram). Branch `garching-cloudflare`.
 
 ## Next up
 
+- Merge `kleinanzeigen-source`: production runs it, `main` doesn't yet.
+- If `/api/listings` starts hitting CPU limits: build the JSON in SQL (`json_group_array`) instead of
+  parsing and re-serializing every row in the Worker.
+- Cross-source duplicates (the same flat on both sites shows twice).
 - Second pass, porting from the retired Python pipeline: LLM fit ranking (free-first tiers),
   the markdown market wiki, feedback learning from dashboard triage. Then delete the Python package,
   `deploy/` (systemd, HF Space) and `.github/workflows/pages.yml`.
 
 ## Recently landed
+
+- 2026-10-23 Kleinanzeigen as a second source: source seam, search streams, page frontier,
+  detail-stage routing, swap rule, room-size rule for shared flats; dashboard source badge.
 
 - 2026-10-23 dashboard compound sort: up to three keys (biggest room, cheapest, best EUR/m2,
   shortest ride, newest), default size -> rent -> ride, kept per browser; cards show EUR/m2.

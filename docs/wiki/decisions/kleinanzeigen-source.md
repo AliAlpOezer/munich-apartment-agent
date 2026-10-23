@@ -124,8 +124,8 @@ dashboard, whichever of the two big Munich sites it was posted on, decided by th
 ## Open
 
 - Cross-source duplicates: the same flat posted on both sites shows twice.
-- Swaps are rejected by default. In the first live run (local, 2026-10-23) they were 102 of 240
-  Kleinanzeigen listings, every one titled "TAUSCHWOHNUNG" (55) or "Wohnungsswap" (47). If the user
-  has a Munich flat to swap, flip the rule.
+- Swaps: **settled 2026-10-23, the user keeps rejecting them** (no flat to swap). In the first live
+  run they were 102 of 240 Kleinanzeigen listings, every one titled "TAUSCHWOHNUNG" (55) or
+  "Wohnungsswap" (47).
 - Short stays priced per night (e.g. "29 €" for a few weeks) have no structured end date; the price
   falls under the 50 EUR plausibility floor and the listing is kept for triage.
