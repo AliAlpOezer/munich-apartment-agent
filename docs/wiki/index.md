@@ -12,6 +12,7 @@ Apartment-hunting agent for WG-Gesucht. **Since 2026-10-22 it runs as one Cloudf
 
 The core of this wiki. Each records the alternatives and honest trade-offs.
 
+- [kleinanzeigen-source.md](decisions/kleinanzeigen-source.md) — Kleinanzeigen as a second source behind a source seam: streams, page frontier, detail-stage routing, edge CPU (2026-10-23).
 - [cloudflare-workers-hosting.md](decisions/cloudflare-workers-hosting.md) — one Worker (cron, queue, D1, static dashboard) replaces the box; invariants, seams, failure model (2026-10-22).
 - [bike-time-filter.md](decisions/bike-time-filter.md) — routed e-bike minutes to TUM and SAP Garching decide; derived radius is a superset (2026-10-22).
 - [deterministic-core-llm-at-edges.md](decisions/deterministic-core-llm-at-edges.md) — hard-coded pipeline; LLM only for enrichment + wiki prose, never planning.

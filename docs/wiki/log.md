@@ -2,6 +2,16 @@
 
 Append-only history of documentation passes. Newest first.
 
+## 2026-10-23 — Kleinanzeigen as a second source
+
+**Pages added**: `decisions/kleinanzeigen-source` (goal, invariants, components, failure model,
+rejected alternatives, open questions).
+
+**Evidence sources** (checked 2026-10-23)
+- Live Kleinanzeigen search pages (c203, c199, c205 around location 6303, r15) and three detail pages.
+- `wrangler dev --remote` egress probe; throwaway Worker CPU probe read via `wrangler tail --format json`.
+- robots.txt (`/*/s-anzeige:angebote` disallowed).
+
 ## 2026-10-23 — 37-minute limit, U6 alternative, retroactive criteria
 
 **Pages updated**: `decisions/bike-time-filter` (update section, Schleissheim alternatives),
