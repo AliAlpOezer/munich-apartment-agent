@@ -10,20 +10,20 @@ e-bike (22 km/h, routed), dashboard only (no Telegram). Branch `garching-cloudfl
 
 ## In flight
 
-- First deploy to Cloudflare: needs `wrangler login` by the user, then D1 + queue creation, remote
-  migration, deploy, `API_TOKEN` secret (runbook: `worker/README.md`).
-- Confirm WG-Gesucht answers Cloudflare egress (only verified from a residential IP so far) and that
-  a search-page parse stays inside the free plan's 10 ms CPU (check Workers Observability).
+- Deployed 2026-10-23: https://apartment-agent.alialp.workers.dev (D1 `apartments` in WEUR, queue
+  `apartment-jobs`, cron `0 5-22 * * *`). `API_TOKEN` secret set; the same value is in the user's
+  Windows env var `APARTMENT_AGENT_API_TOKEN` (paste into the dashboard's key dialog). No GitHub
+  secret: CI doesn't need it.
+- Verified on Cloudflare (manual run 08:13 UTC): WG-Gesucht answers Worker egress, Valhalla answered
+  all 36 matrix lookups, 36 scraped / 11 matched / 0 errors in ~45 s. Detail jobs used 5-8 ms CPU
+  (free limit 10 ms); detail pages are now streamed into HTMLRewriter to widen the margin.
+- Open: the 08:00 UTC cron created no run (deployed 07:57; trigger propagation is the likely cause).
+  Confirm a cron run lands at 09:00 UTC and measure search-page CPU (not captured yet). If search
+  pages approach 10 ms, cut the HTML before parsing or move to Workers Paid.
 
 ## Blocked
 
-- Deploy is blocked on Cloudflare auth. 2026-10-23: `! cd worker && npx wrangler login` from inside
-  Claude Code opened the OAuth page but timed out waiting for consent (the `!` command is
-  backgrounded after 120 s); `wrangler whoami` still says the stored token expired. Fix: run
-  `npx wrangler login` in your own terminal in `worker/` and approve in the browser within a minute
-  or so, then the agent continues: `wrangler d1 create apartments` (paste `database_id` into
-  `wrangler.jsonc`), `wrangler queues create apartment-jobs`, `npm run db:migrate:remote`,
-  `npm run deploy`; the user sets `npx wrangler secret put API_TOKEN` themselves.
+- Nothing.
 
 ## Next up
 
