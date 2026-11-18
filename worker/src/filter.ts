@@ -43,6 +43,9 @@ export function evaluate(f: ListingFacts, c: Criteria, today: string): Verdict {
     }
   }
 
+  // A swap only rents to someone who hands over a flat of their own.
+  if (f.swap) reasons.push("flat swap (Tausch) only");
+
   // Commute: e-bike to every anchor, or a short ride to the transit line. Unknown keeps.
   const bikeOk = f.bikeMinutes === null || f.bikeMinutes <= c.maxBikeMinutes;
   const transitOk = f.stopMinutes !== null && f.stopMinutes <= c.maxBikeToStopMinutes;

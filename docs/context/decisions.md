@@ -14,14 +14,14 @@ cron, two platforms), LangGraph.js (the queue already gives durable stages and r
 Objects (no uniqueness constraint), Workers Paid (not needed yet). Telegram dropped: user chose
 dashboard-only. Rationale: `docs/wiki/decisions/cloudflare-workers-hosting.md`.
 
-### Filter on routed e-bike minutes to TUM and SAP Garching, or a short ride to the U6 (2026-10-22, widened 2026-10-23)
+### Filter on routed e-bike minutes to TUM Garching, or a short ride to the U6 (2026-10-22, widened 2026-10-23, SAP dropped 2026-11-18)
 Status: settled · revisit-if anchors change or the user switches bike type (`BIKE_SPEED_KMH`).
 Each listing's coordinates (from the search page's map markers) are routed with Valhalla
-(`costing: bicycle`, 22 km/h). Passes if the slower anchor is <= 37 min (raised from 30 so all of
+(`costing: bicycle`, 22 km/h). Passes if the slowest anchor (now only TUM) is <= 37 min (raised from 30 so all of
 Ober-/Unterschleissheim fits; similar-distance places come along) or the nearest U6 station
 (Garching-Forschungszentrum to Nordfriedhof) is <= 10 min. A per-town exception was rejected as the
 brittle allowlist pattern. Router failure -> flagged haversine x 1.3 estimate, noted on the run,
-re-routed next sighting. Derived radius 14.9 km. Rationale: `docs/wiki/decisions/bike-time-filter.md`.
+re-routed next sighting. Derived radius 15.0 km. Rationale: `docs/wiki/decisions/bike-time-filter.md`.
 
 ### Criteria changes apply to listings still online (2026-10-23)
 Status: settled.

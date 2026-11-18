@@ -2,7 +2,9 @@ import { env } from "cloudflare:workers";
 import type { Fetcher } from "../src/bike";
 import { loadSettings, type Settings } from "../src/config";
 import type { Deps } from "../src/pipeline";
+import type { Source } from "../src/sources";
 import type { Job } from "../src/types";
+import { wgGesucht } from "../src/wggesucht";
 import searchPage from "./fixtures/search-page.html?raw";
 
 export const settings = loadSettings(env as unknown as Record<string, unknown>);
@@ -58,13 +60,14 @@ export function valhallaRoute(minutes: (i: number, j: number) => number): Route 
 export const html = (body: string, status = 200) =>
   new Response(body, { status, headers: { "content-type": "text/html; charset=utf-8" } });
 
+/** WG-Gesucht only unless told otherwise: the original fixtures are WG-Gesucht pages. */
 export function deps(
   fetcher: Fetcher, q: FakeQueue, now = new Date("2026-10-22T12:00:00Z"),
-  criteria: Partial<Settings["criteria"]> = {},
+  criteria: Partial<Settings["criteria"]> = {}, sources: Source[] = [wgGesucht],
 ): Deps {
   return {
     db: env.DB, jobs: q.queue, fetcher, now: () => now,
-    settings: { ...settings, criteria: { ...settings.criteria, ...criteria } },
+    settings: { ...settings, sources, criteria: { ...settings.criteria, ...criteria } },
   };
 }
 

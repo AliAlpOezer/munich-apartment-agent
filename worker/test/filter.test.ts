@@ -18,7 +18,7 @@ const criteria: Criteria = {
 const today = "2026-10-22";
 const base: ListingFacts = {
   priceListed: 600, priceWarm: null, priceCold: null, sizeSqm: 14,
-  availableFrom: "2026-11-01", availableTo: null, bikeMinutes: 18, stopMinutes: null,
+  availableFrom: "2026-11-01", availableTo: null, bikeMinutes: 18, stopMinutes: null, swap: false,
 };
 const check = (patch: Partial<ListingFacts>) => evaluate({ ...base, ...patch }, criteria, today);
 
@@ -66,6 +66,10 @@ describe("evaluate", () => {
       "bike 45 min > 30 min; 12 min to the U6 > 10 min",
     ]);
     expect(check({ bikeMinutes: null, stopMinutes: 40 }).matched).toBe(true); // unknown ride keeps
+  });
+
+  it("rejects flat swaps, which need a flat of one's own in exchange", () => {
+    expect(check({ swap: true }).reasons).toEqual(["flat swap (Tausch) only"]);
   });
 
   it("rejects commutes over the limit and reports every failed rule", () => {

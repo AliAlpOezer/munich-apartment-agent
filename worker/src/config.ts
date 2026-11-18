@@ -1,3 +1,6 @@
+import { sourceById } from "./registry";
+import type { Source } from "./sources";
+
 export interface Anchor {
   label: string; // short, shown next to bike minutes ("TUM")
   name: string;
@@ -21,7 +24,8 @@ export interface Criteria {
 
 export interface Settings {
   criteria: Criteria;
-  maxPages: number;
+  sources: Source[];
+  maxPages: number; // per search stream
   manualRunCooldownMinutes: number;
   routerUrl: string;
 }
@@ -71,6 +75,16 @@ function places(env: Record<string, unknown>, key: string, allowEmpty: boolean):
   });
 }
 
+function sources(env: Record<string, unknown>): Source[] {
+  const raw = typeof env.SOURCES === "string" ? JSON.parse(env.SOURCES) : env.SOURCES;
+  if (!Array.isArray(raw) || raw.length === 0) throw new Error("config SOURCES must be a non-empty array");
+  return raw.map((id) => {
+    const source = sourceById(String(id));
+    if (!source) throw new Error(`config SOURCES: unknown source ${JSON.stringify(id)}`);
+    return source;
+  });
+}
+
 /** Validate the wrangler vars once per invocation; a bad deploy fails loudly, not silently. */
 export function loadSettings(env: Record<string, unknown>): Settings {
   const routerUrl = String(env.ROUTER_URL ?? "");
@@ -88,6 +102,7 @@ export function loadSettings(env: Record<string, unknown>): Settings {
       maxBikeMinutes: num(env, "MAX_BIKE_MINUTES", 1, 240),
       bikeSpeedKmh: num(env, "BIKE_SPEED_KMH", 5, 45),
     },
+    sources: sources(env),
     maxPages: num(env, "MAX_PAGES", 1, 20),
     manualRunCooldownMinutes: num(env, "MANUAL_RUN_COOLDOWN_MINUTES", 0, 1440),
     routerUrl: routerUrl.replace(/\/+$/, ""),

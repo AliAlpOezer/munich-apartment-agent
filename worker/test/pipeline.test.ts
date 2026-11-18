@@ -1,8 +1,10 @@
 import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
+import { kleinanzeigen } from "../src/kleinanzeigen";
 import { handleJob, MAX_FETCH_ATTEMPTS, startRun } from "../src/pipeline";
 import * as store from "../src/store";
 import type { Job } from "../src/types";
+import { wgGesucht } from "../src/wggesucht";
 import detailPage from "./fixtures/detail.html?raw";
 import emptyPage from "./fixtures/search-empty.html?raw";
 import { deps, fakeFetcher, fakeQueue, html, searchPage, valhallaRoute, type Route } from "./helpers";
@@ -10,10 +12,10 @@ import { deps, fakeFetcher, fakeQueue, html, searchPage, valhallaRoute, type Rou
 const WG = "https://www.wg-gesucht.de/";
 const ROUTER = "https://valhalla1.openstreetmap.de";
 // Fixture order: Freimann, Neufahrn, Oberschleissheim, Dietersheim, Hasenbergl, Bogenhausen.
-// Router minutes: targets 0-1 are TUM and SAP (SAP 0.5 min slower), 2.. are the U6 stops.
-const BIKE = [35, 24, 38, 9, 42, 45];
+// Router minutes: target 0 is the TUM anchor, 1.. are the U6 stops.
+const BIKE = [35.5, 24.5, 38.5, 9.5, 42.5, 45.5];
 const STOP = [4, 30, 25, 12, 8, 20];
-const minutes = (i: number, j: number) => (j < 2 ? BIKE[i] + j * 0.5 : STOP[i] + (j - 2));
+const minutes = (i: number, j: number) => (j < 1 ? BIKE[i] : STOP[i] + (j - 1));
 const SEARCH = `${WG}wg-zimmer-und-1-zimmer-wohnungen-und-wohnungen-und-haeuser-in-Muenchen.90.0+1+2+3.1`;
 const PAGE0 = `${SEARCH}.0.html`;
 const PAGE1 = `${SEARCH}.1.html`;
@@ -61,12 +63,12 @@ describe("a full run", () => {
     expect(all).toHaveLength(6);
     const byId = Object.fromEntries(all.map((r) => [r.external_id, r]));
 
-    // Within 37 min of both anchors, or 10 min of the U6 -> detail fetched -> matched with warm rent.
+    // Within 37 min of the anchor, or 10 min of the U6 -> detail fetched -> matched with warm rent.
     for (const id of ["7335451", "4061496", "14265492", "14269724"]) {
       expect(byId[id]).toMatchObject({ stage: "matched", price_warm: 650, price_cold: 600, detail_status: "ok" });
     }
     expect(JSON.parse(byId["14265492"].bike_detail!)).toEqual([
-      { label: "TUM", minutes: 9, km: 3 }, { label: "SAP", minutes: 9.5, km: 3.2 },
+      { label: "TUM", minutes: 9.5, km: 3.2 },
     ]);
     // Hasenbergl is 42.5 min by bike but 8 min from a U6 stop: the transit commute qualifies it.
     expect(byId["14269724"]).toMatchObject({ bike_minutes: 42.5, stop_minutes: 8, stop_label: "Garching-Forschungszentrum" });
@@ -224,6 +226,20 @@ describe("failure handling", () => {
     const after = await rows();
     expect(after.every((r) => r.bike_source === "valhalla")).toBe(true);
     expect(after.find((r) => r.external_id === "13293325")?.stage).toBe("rejected"); // 45.5 min, stop 20
+  });
+
+  it("keeps one source's results when the other is blocked, and shows the failure", async () => {
+    const q = fakeQueue();
+    const fetcher = fakeFetcher(routes({ "https://www.kleinanzeigen.de/": () => html("Access Denied", 403) }));
+    const d = deps(fetcher, q, undefined, {}, [wgGesucht, kleinanzeigen]);
+    await startRun(d, "cron");
+    for (let i = 0; i < q.sent.length; i++) {
+      expect(await handleJob(q.sent[i].body, MAX_FETCH_ATTEMPTS, d)).toEqual({ ack: true });
+    }
+    expect((await rows()).filter((r) => r.stage === "matched")).toHaveLength(4);
+    const [summary] = await store.runSummaries(env.DB, 1);
+    expect(summary).toMatchObject({ pages_total: 5, pages_done: 5, pages_failed: 3, matched: 4 });
+    expect(summary.errors).toContain("kleinanzeigen:wg page 0: fetch failed: HTTP 403");
   });
 
   it("refuses URLs outside the source host", async () => {

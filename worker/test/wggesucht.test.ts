@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { haversineKm } from "../src/bike";
+import { searchArea } from "../src/sources";
 import {
-  buildSearchUrl, classifyCostLabel, extractJsonArray, parseDetailCosts, parseSearchPage, searchArea,
+  buildSearchUrl, classifyCostLabel, extractJsonArray, parseDetailCosts, parseSearchPage,
 } from "../src/wggesucht";
 import detailPage from "./fixtures/detail.html?raw";
 import emptyPage from "./fixtures/search-empty.html?raw";
@@ -33,6 +34,7 @@ describe("parseSearchPage (live layout, 2026-10-22)", () => {
       sizeSqm: 13,
       availableFrom: "2026-10-23",
       availableTo: null,
+      swap: false,
     });
     const freimann = listings.find((l) => l.externalId === "7335451")!;
     expect(freimann.title).toBe("Möbliertes WG - Zimmer in Einfamilienhaus für Studenten und Praktikanten");
@@ -127,7 +129,7 @@ describe("search area", () => {
       expect(haversineKm(area.lat, area.lng, s.lat, s.lng) + stopKm).toBeLessThanOrEqual(area.radiusM / 1000);
     }
     // Nordfriedhof (11.2 km out) + 10 min x 22 km/h beats 37 min x 22 km/h around the anchors.
-    expect(area.radiusM).toBe(14900);
+    expect(area.radiusM).toBe(15000);
   });
 
   it("builds the page-0 URL with the rent cap and radius", () => {
@@ -135,7 +137,7 @@ describe("search area", () => {
     expect(url.hostname).toBe("www.wg-gesucht.de");
     expect(url.pathname).toContain("-in-Muenchen.90.0+1+2+3.1.0.html");
     expect(url.searchParams.get("rMax")).toBe("650");
-    expect(url.searchParams.get("radDis")).toBe("14900");
+    expect(url.searchParams.get("radDis")).toBe("15000");
     expect(url.searchParams.getAll("categories[3]")).toEqual(["3"]);
   });
 });

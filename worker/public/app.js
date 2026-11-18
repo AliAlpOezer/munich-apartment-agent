@@ -4,7 +4,6 @@ const $ = (sel) => document.querySelector(sel);
 const DAY_MS = 86_400_000;
 const POLL_IDLE_MS = 60_000;
 const POLL_BUSY_MS = 5_000;
-const LISTING_ORIGIN = "https://www.wg-gesucht.de/";
 
 const state = {
   config: null,
@@ -186,7 +185,7 @@ function bikeFact(l) {
   const approx = l.bike_source === "estimate" ? "~" : "";
   const parts = (l.bike_detail ?? [{ label: "", minutes: l.bike_minutes }])
     .map((a) => `${approx}${Math.round(a.minutes)} min${a.label ? ` ${a.label}` : ""}`);
-  return el("span", { class: "fact", title: `${l.bike_km ?? "?"} km by e-bike (slower anchor)` }, icon("bike"), parts.join(" · "));
+  return el("span", { class: "fact", title: `${l.bike_km ?? "?"} km by e-bike${(l.bike_detail?.length ?? 0) > 1 ? " (slower anchor)" : ""}` }, icon("bike"), parts.join(" · "));
 }
 
 // Shown only when the short ride to the line is a qualifying commute on its own.
@@ -215,9 +214,13 @@ function priceBlock(l) {
   return ["–", "price unknown"];
 }
 
+const sources = () => state.config?.sources ?? [];
+const sourceOf = (l) => sources().find((s) => s.id === l.source);
+
 function flags(l) {
   const out = [];
-  if (l.stage === "pending_detail") out.push(el("span", { class: "badge info", text: "checking price…" }));
+  if (sources().length > 1) out.push(el("span", { class: "badge", text: sourceOf(l)?.label ?? l.source }));
+  if (l.stage === "pending_detail") out.push(el("span", { class: "badge info", text: "checking details…" }));
   if (l.bike_source === "estimate") out.push(el("span", { class: "badge warn", text: "ride estimated" }));
   if (l.available_to) out.push(el("span", { class: "badge gold", text: "temporary" }));
   if (Date.now() - Date.parse(l.last_seen_at) > 1.1 * DAY_MS) {
@@ -241,7 +244,9 @@ function renderCard(l) {
   node.querySelector(".badge.new").hidden = !(l.triage === "new" && l.stage !== "rejected");
   const link = node.querySelector(".card-title");
   link.textContent = l.title || "Untitled listing";
-  if (l.url?.startsWith(LISTING_ORIGIN)) link.href = l.url;
+  // Link out only to the listing's own site.
+  const origin = sourceOf(l)?.origin;
+  if (origin && l.url?.startsWith(`${origin}/`)) link.href = l.url;
   link.addEventListener("click", () => {
     if (l.triage === "new" && l.stage !== "rejected" && saved.get("apiToken")) setTriage(l, "seen", { quiet: true });
   });
@@ -289,7 +294,7 @@ function renderEmpty(count) {
   const messages = {
     new: ["Nothing new right now", "New matches show up here after each hourly check."],
     interested: ["No favourites yet", "Star a listing to keep it here."],
-    matches: ["No matches yet", "The agent checks WG-Gesucht every hour from 6:00 to 23:00."],
+    matches: ["No matches yet", `The agent checks ${sources().map((s) => s.label).join(" and ") || "the listing sites"} every hour from 6:00 to 23:00.`],
     dismissed: ["Nothing dismissed", "Listings you dismiss move here."],
     rejected: ["Nothing rejected in the last 14 days", "Listings that miss a criterion show up here with the reason."],
   };

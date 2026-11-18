@@ -1,10 +1,10 @@
 ---
 type: decision
-title: Filter on routed e-bike minutes to TUM and SAP Garching, or a short ride to the U6
+title: Filter on routed e-bike minutes to TUM Garching, or a short ride to the U6
 description: How the commute rule (37 min by e-bike, or 10 min to a U6 station) is decided per listing, with the server-side radius derived as a guaranteed superset.
 resource: worker/src/bike.ts
 tags: [decision, search, geography, filter]
-timestamp: 2026-10-23T00:00:00Z
+timestamp: 2026-11-18T00:00:00Z
 ---
 
 ## Context
@@ -58,6 +58,14 @@ The FOSSGIS instance caps a matrix at **100 source x target pairs** (error_code 
 targets that first run's requests were refused and every ride fell back to an estimate without
 failing the run; requests are now chunked to fit, a router failure is noted in the run history, and
 estimated rides are re-routed on the next sighting.
+
+## Update 2026-11-18: TUM is the only anchor
+
+The user will not work at SAP, so the SAP Labs anchor is removed from `ANCHORS`. The rule is
+otherwise unchanged: <= 37 min by e-bike to TUM Garching, or <= 10 min to a U6 station. SAP sat
+0.6 km west of TUM, so the reachable area barely moves. The search centre is now TUM itself and
+the derived radius goes from 14.9 to 15.0 km (Nordfriedhof, 11.25 km from TUM, + 10 min x 22 km/h).
+The anchor list stays a list, so adding a workplace later is a config change.
 
 ## Alternatives & trade-offs
 

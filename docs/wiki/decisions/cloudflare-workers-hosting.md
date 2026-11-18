@@ -24,7 +24,7 @@ served by Apache with no bot wall; each search page embeds a `markers` JSON arra
 ## Goal
 
 Show the user every WG-Gesucht room or flat with warm rent at most 650 EUR, available by the end
-of January 2027 and at most a 30-minute e-bike ride from both TUM Garching and SAP Garching,
+of January 2027 and at most a 30-minute e-bike ride from TUM Garching (SAP Garching was a second anchor until 2026-11-18),
 within about an hour of it being posted, on a private dashboard, with nothing to keep running.
 
 Technology-independent core: *each qualifying listing is shown once, soon after posting, with the

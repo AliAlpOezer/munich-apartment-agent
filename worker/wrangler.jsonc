@@ -12,8 +12,9 @@
     "not_found_handling": "single-page-application",
     "run_worker_first": ["/api/*"]
   },
-  // Hourly, 05:00-22:00 UTC (06/07-23/24 Berlin). Each run is 1-2 search pages plus one detail
-  // page per new candidate, serialized through the queue below.
+  // Hourly, 05:00-22:00 UTC (06/07-23/24 Berlin). Each run walks one result list per search
+  // stream (WG-Gesucht, three Kleinanzeigen categories) plus one detail page per new candidate,
+  // serialized through the queue below.
   "triggers": { "crons": ["0 5-22 * * *"] },
   "d1_databases": [
     {
@@ -40,9 +41,10 @@
     ]
   },
   "vars": {
+    // Listing sites to search (ids from src/registry.ts). Drop one here if it starts blocking.
+    "SOURCES": ["wg_gesucht", "kleinanzeigen"],
     "ANCHORS": [
-      { "label": "TUM", "name": "TUM Campus Garching (CIT)", "lat": 48.2625535, "lng": 11.6680432 },
-      { "label": "SAP", "name": "SAP Labs Munich, Garching", "lat": 48.2641004, "lng": 11.6607557 }
+      { "label": "TUM", "name": "TUM Campus Garching (CIT)", "lat": 48.2625535, "lng": 11.6680432 }
     ],
     "MAX_WARM_RENT_EUR": 650,
     // Alternative commute: a short ride to any U6 station between the campus and Nordfriedhof
@@ -65,6 +67,7 @@
     "MIN_STAY_DAYS": 90,
     "MAX_BIKE_MINUTES": 37,
     "BIKE_SPEED_KMH": 22,
+    // Per search stream; results are newest first, so later pages only matter on the first run.
     "MAX_PAGES": 8,
     "MANUAL_RUN_COOLDOWN_MINUTES": 10,
     "ROUTER_URL": "https://valhalla1.openstreetmap.de"

@@ -2,6 +2,25 @@
 
 Append-only history of documentation passes. Newest first.
 
+## 2026-11-18 - SAP anchor removed, README rewritten
+
+**Pages updated**: `decisions/bike-time-filter` (update section), `decisions/cloudflare-workers-hosting`
+(goal), `index`; root `README.md` rewritten around the live Worker.
+
+**Evidence sources** (checked 2026-11-18)
+- `worker/` test suite after the change: 78 passed; derived radius 15.0 km.
+- Isochrone overlay regenerated from Valhalla for TUM and the 9 U6 stops.
+
+## 2026-10-23 — Kleinanzeigen as a second source
+
+**Pages added**: `decisions/kleinanzeigen-source` (goal, invariants, components, failure model,
+rejected alternatives, open questions).
+
+**Evidence sources** (checked 2026-10-23)
+- Live Kleinanzeigen search pages (c203, c199, c205 around location 6303, r15) and three detail pages.
+- `wrangler dev --remote` egress probe; throwaway Worker CPU probe read via `wrangler tail --format json`.
+- robots.txt (`/*/s-anzeige:angebote` disallowed).
+
 ## 2026-10-23 — 37-minute limit, U6 alternative, retroactive criteria
 
 **Pages updated**: `decisions/bike-time-filter` (update section, Schleissheim alternatives),

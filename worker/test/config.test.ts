@@ -11,7 +11,7 @@ describe("loadSettings", () => {
     expect(s.criteria).toMatchObject({
       maxWarmRentEur: 650, availableBy: "2027-01-31", maxBikeMinutes: 37, maxBikeToStopMinutes: 10, bikeSpeedKmh: 22,
     });
-    expect(s.criteria.anchors.map((a) => a.label)).toEqual(["TUM", "SAP"]);
+    expect(s.criteria.anchors.map((a) => a.label)).toEqual(["TUM"]);
     expect(s.criteria.transitLine).toBe("U6");
     expect(s.criteria.transitStops.map((t) => t.label)).toEqual([
       "Garching-Forschungszentrum", "Garching", "Garching-Hochbrück", "Fröttmaning", "Kieferngarten",

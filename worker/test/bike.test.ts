@@ -5,7 +5,7 @@ import { fakeFetcher, valhallaRoute } from "./helpers";
 
 const anchors: Anchor[] = [
   { label: "TUM", name: "TUM", lat: 48.2625535, lng: 11.6680432 },
-  { label: "SAP", name: "SAP", lat: 48.2641004, lng: 11.6607557 },
+  { label: "Lab", name: "Second anchor", lat: 48.2641004, lng: 11.6607557 },
 ];
 const stops: Anchor[] = [
   { label: "Garching", name: "U6 Garching", lat: 48.249285, lng: 11.652533 },
@@ -15,14 +15,14 @@ const ROUTER = "https://router.test";
 const dietersheim = { lat: 48.282421, lng: 11.672301 };
 
 describe("haversineKm", () => {
-  it("measures TUM to SAP Garching at about 0.56 km", () => {
+  it("measures TUM to the second anchor at about 0.56 km", () => {
     expect(haversineKm(anchors[0].lat, anchors[0].lng, anchors[1].lat, anchors[1].lng)).toBeCloseTo(0.56, 1);
   });
 });
 
 describe("bikeTimes", () => {
   it("uses routed times, reports the slower anchor and the nearest stop", async () => {
-    // Targets: TUM, SAP, then the stops. Source 0 is 12/13.5 min from the anchors, 9/6 from the stops.
+    // Targets: TUM, Lab, then the stops. Source 0 is 12/13.5 min from the anchors, 9/6 from the stops.
     const table = [[12, 13.5, 9, 6], [25, 24, 30, 40]];
     const fetcher = fakeFetcher({ [ROUTER]: valhallaRoute((i, j) => table[i][j]) });
     const { times, routerError } = await bikeTimes([dietersheim, null, dietersheim], anchors, stops, 22, ROUTER, fetcher);
@@ -30,7 +30,7 @@ describe("bikeTimes", () => {
     expect(fetcher.calls).toEqual([`${ROUTER}/sources_to_targets`]); // one batched request
     expect(times[0]).toEqual({
       minutes: 13.5, km: 4.5, source: "valhalla",
-      perAnchor: [{ label: "TUM", minutes: 12, km: 4 }, { label: "SAP", minutes: 13.5, km: 4.5 }],
+      perAnchor: [{ label: "TUM", minutes: 12, km: 4 }, { label: "Lab", minutes: 13.5, km: 4.5 }],
       stop: { label: "Freimann", minutes: 6, km: 2 },
     });
     expect(times[1]).toBeNull(); // no coordinates: unknown, never guessed
