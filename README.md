@@ -1,153 +1,104 @@
-# 🏠 Munich Apartment-Hunter Agent
+# Munich apartment agent
 
-> **2026-10-22: the live agent is now a Cloudflare Worker in [`worker/`](worker/README.md)**,
-> hunting around Garching (TUM + SAP): warm rent at most 650 EUR, at most 30 minutes by e-bike
-> (routed), shown on a map dashboard. The Python/LangGraph pipeline described below is retired;
-> its LLM ranking, knowledge wiki and feedback parts will be ported in a second pass.
+A small agent that watches Munich listing sites for rooms and flats within reach of TUM Garching
+and shows the ones that fit on a map. It exists because good offers in Munich are often gone
+within hours, and checking two sites by hand several times a day does not scale.
 
-An autonomous **LangGraph** agent that wakes every 3 hours, scrapes Munich housing listings
-(WG-Gesucht first) against hard filters, deduplicates against a local **SQLite** database, and pushes
-new matches to **Telegram** — built to survive a brutally tight rental market where good listings
-vanish within hours.
+It runs as a single Cloudflare Worker on the free plan: no server, no database to host, nothing to
+keep alive. Live at https://apartment-agent.alialp.workers.dev.
 
-It also demonstrates **tiered LLM usage**: cheap models do the easy work, premium models are reserved
-for the rare hard call — so you don't pay flagship prices to validate a JSON blob.
+## What it looks for
+
+| Criterion | Value |
+|---|---|
+| Sources | WG-Gesucht, Kleinanzeigen (rooms, flats, houses) |
+| Warm rent | at most 650 EUR |
+| Room or flat size | at least 10 m² |
+| Move-in | available by 31 Jan 2027, staying at least 90 days |
+| Commute | at most 37 min by e-bike to TUM Garching, **or** at most 10 min to a U6 station between Garching-Forschungszentrum and Nordfriedhof |
+| Excluded | flat swaps (Tausch) |
+
+Every value is a setting in [`worker/wrangler.jsonc`](worker/wrangler.jsonc), checked at startup so
+a typo fails loudly instead of filtering the wrong way.
+
+## How it works
 
 ```
-            systemd timer (every 3h, jittered)
-                          │
-   START → scrape → filter → dedup ──(new?)──► enrich → persist → wiki → notify → END
-   (curl-cffi)   (warm≤657, (SQLite)          (LLM     (SQLite)   (synth) (Telegram)
-                  size≥12,                     fit-rank)
-                  Oct-2026,
-                  ≤5km Alte Heide)
+hourly cron / "Search now"
+        │
+        ▼
+  queue: search page ──► parse listing cards and map coordinates
+                         ├─ route e-bike minutes (Valhalla, estimate if it is down)
+                         ├─ filter on card facts ───────────────► D1: rejected, with reasons
+                         └─ queue: detail page ──► warm rent ──► D1: matched
+                                                                    │
+  dashboard (map, cards, triage) ◄── /api ◄─────────────────────────┘
 ```
 
-## Why it's interesting
-- **Resilient scraping** — `curl-cffi` with Chrome TLS impersonation gets past the anti-bot layer
-  that blocks plain `requests`; a headless-browser Playwright fallback (optional `browser` extra)
-  kicks in automatically when curl-cffi is blocked.
-- **Source-adapter pattern** — adding ImmoScout24/Kleinanzeigen later is one subclass.
-- **Tiered model router** — OpenRouter (free) → OpenCode Zen → Claude, escalating only on low
-  confidence or failure, with intra-tier rotation for rate-limited free models.
-- **Deterministic core, LLM at the edges** — parsing/filtering are pure and unit-tested; the LLM only
-  ranks fit and writes one-line summaries, so the system is cheap, fast, and debuggable.
-- **A knowledge wiki, not just a feed** — instead of scoring each listing in isolation and forgetting
-  it, the agent maintains a synthesized, interlinked markdown wiki of the search (see below).
+1. **Search.** Every hour between 05:00 and 22:00 UTC, the Worker queues one result page per
+   search stream. Pages are fetched one at a time through a queue, which keeps the load on the
+   sites low and the Worker well inside its CPU limit.
+2. **Locate.** WG-Gesucht puts each listing's coordinates on the search page; Kleinanzeigen puts
+   them on the detail page, which is fetched first. The coordinates are sent to a public
+   [Valhalla](https://valhalla.github.io/valhalla/) routing server, which returns real cycling
+   minutes to TUM and to each U6 station. Straight-line distance is a poor proxy here: the Isar and
+   the motorways make some routes over a third longer than the crow flies.
+3. **Filter.** Rent, size, dates and commute are checked on what the search card shows. A listing
+   that fails is stored with its reasons, so the dashboard can explain every rejection.
+4. **Confirm the rent.** Cards often show only the cold rent. For listings that pass, the detail
+   page is fetched once to read the warm rent before the final decision.
+5. **Show.** The dashboard lists matches as cards and pins on a map, with the reachable area shaded.
+   Each listing can be marked new, interested or dismissed.
 
-## Knowledge wiki (the *LLM Wiki* pattern)
-Modelled on Karpathy's [*LLM Wiki*](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)
-idea: rather than re-deriving an answer from raw rows every time, the agent **incrementally maintains
-a persistent, interlinked markdown wiki** on top of the listings data. Three layers — raw sources
-(the `listings` table), the wiki (`WIKI_DIR`, default `./wiki`), and the schema
-([`WIKI_SCHEMA.md`](WIKI_SCHEMA.md)) — and three operations:
-- **Ingest** *(every run, in the `wiki` node)* — folds new listings into per-district pages and a
-  market overview. Stats/links are computed deterministically; a cheap-tier model writes only the
-  prose "market read", revising the prior text rather than restarting.
-- **Query** — you (and a future frontend) read the synthesized wiki, not the raw rows.
-- **Lint** *(`--lint`)* — health-checks the wiki for stale/orphan pages, gaps, and broken links.
+A few rules keep the results trustworthy:
 
-The runtime wiki is **gitignored** so it persists across `git reset --hard` redeploys and never leaks
-listing data into the repo; only the schema is tracked. Set `ENABLE_WIKI=false` to skip it.
+- **The search area is a guaranteed superset.** The radius sent to each site is derived from the
+  commute limits, and a route is never shorter than a straight line, so nothing reachable is cut
+  off server-side. The precise decision happens per listing.
+- **Outages degrade, they do not drop listings.** If the router is down, the commute is estimated
+  from distance, marked with "~" on the card, and re-routed the next time the listing appears.
+- **Criteria changes apply retroactively.** Each decision records the criteria it was made under.
+  After a change, listings still online are re-decided on their next sighting, and their triage is
+  kept.
 
-## Filters (configurable in `.env`)
-- Warmmiete **≤ 657 €** — the search card shows one ambiguous figure (usually Kaltmiete), so each
-  new listing's detail page is fetched to resolve the real warm/cold split before the final filter
-  (`ENABLE_DETAIL_FETCH`); falls back to the listed figure when a detail fetch is off or fails
-- Size **≥ 12 m²**
-- Available around **1 Oct 2026** (sublets ending before move-in are dropped)
-- **WG rooms and apartments**, within a **geo-radius** — default **≤ 5 km of Alte Heide** (north
-  Munich) via `SEARCH_CENTER_*` / `SEARCH_RADIUS_M`. When a radius is set it is the authoritative
-  location filter; clear the centre lat/lng to fall back to a Munich + commutable-suburb allowlist
+## Repository layout
 
-## Setup
-```bash
-python -m venv .venv && . .venv/bin/activate
-pip install -e ".[dev]"            # add ".[browser]" for the Playwright fallback
-cp .env.example .env               # then fill in keys
-```
-1. **Database** — nothing to set up. A local SQLite file (`DB_PATH`, default `apartments.sqlite`) is
-   created and its schema initialized automatically on first run.
-2. **Telegram** — create a bot via @BotFather, get the token + your chat id.
-3. **LLM keys** — OpenRouter (free tier) for tier-1, optionally OpenCode Zen + Anthropic for escalation.
+| Path | Contents |
+|---|---|
+| [`worker/`](worker/README.md) | The live agent: TypeScript Worker, D1 migrations, dashboard, tests. Setup and operations are in its README. |
+| [`docs/context/`](docs/context/INDEX.md) | Short context pack: current status, architecture, decisions, known gotchas. |
+| [`docs/wiki/`](docs/wiki/index.md) | Longer design records, each with the alternatives that were rejected and why. |
+| `src/`, `tests/`, `deploy/` | The earlier Python version, kept for reference (see below). |
 
-## Run
-```bash
-python -m apartment_agent.main --dry-run   # live scrape + filter, NO db/telegram, prints matches
-python -m apartment_agent.main             # full run: dedup, enrich, persist, wiki, notify
-python -m apartment_agent.main --lint      # health-check the knowledge wiki, write lint-report
-python -m apartment_agent.main --sync-feedback   # pull Telegram 👍/👎 into learned preferences
-python -m apartment_agent.evals.harness    # run fit-score evals against the live LLM tiers
-pytest                                     # unit tests (no creds); RUN_LIVE_EVALS=1 adds a live eval
+## Running it
+
+```sh
+cd worker
+npm ci
+npm test            # runs inside workerd with a fresh local D1
+npm run dev         # http://127.0.0.1:8787
 ```
 
-## Dashboard
-A web frontend (FastAPI + a no-build vanilla-JS page) over the same local SQLite data:
-- listing **cards**, newest/new-status first (top-left); mark each **New / Seen / Sent**
-- the agent's **last activity** time and a **run report** (new findings vs. only-already-seen vs.
-  nothing matched)
-- a **Search now** button and an **auto-search countdown** (`WEB_AUTO_SEARCH_MINUTES`) — both trigger
-  a real agent run in the background; status polls live
-```bash
-pip install -e ".[web]"
-python -m apartment_agent.web --host 0.0.0.0 --port 8000   # serves DB_PATH (default apartments.sqlite)
-```
-> The dashboard reads the **same** SQLite file the agent writes, so run both on the same box (they
-> share `DB_PATH`). The agent's 3h timer and the dashboard use separate checkpoint DBs, so they
-> never collide.
+First-time deployment, criteria changes and troubleshooting are covered in
+[`worker/README.md`](worker/README.md).
 
-### Run on your own server over Tailscale (recommended)
-Simplest and fullest: run the whole app on the box and reach it from your other Tailscale devices.
-Same-origin (no CORS), and the tailnet is the access boundary (only your devices can reach it — no
-token needed). Search-now, status edits, and the report all work.
-```bash
-bash deploy/systemd/install-dashboard.sh     # installs [web] deps + a user service on :8000
-# then from any Tailscale device:
-#   http://<box-hostname>:8000   (or http://<tailscale-ip>:8000)
-# optional HTTPS tailnet URL:
-tailscale serve --bg 8000                     # -> https://<box>.<tailnet>.ts.net
-```
-The autonomous 3h timer keeps running separately; the dashboard uses its own checkpoint DB so the
-two never collide. (Set `WEB_AUTO_SEARCH_MINUTES=0` in `.env` if you don't want the open page to
-auto-trigger extra runs.)
+## Not done yet
 
-### Host the UI on GitHub Pages (backend stays on the box)
-Pages serves only the static frontend; the FastAPI backend keeps running on the box. The page calls
-the box's API, so the box must be reachable over **HTTPS** (a `https://<user>.github.io` page can't
-call a plain-HTTP or private host — mixed content). [Tailscale Funnel](https://tailscale.com/kb/1223/funnel)
-is the easy way to get an HTTPS URL.
+- The same flat posted on both sites appears twice.
+- No notifications: the dashboard is the only output.
+- Ranking by fit, a written summary of the market, and learning from triage decisions existed in
+  the Python version and are still to be ported.
 
-1. **Expose the backend** (HTTPS), e.g. `tailscale funnel 8000`, and set in the box's `.env`:
-   `WEB_API_TOKEN=<a long random secret>` and `WEB_CORS_ORIGINS=https://<user>.github.io`.
-2. **Repo variable** `API_BASE` = the box's HTTPS URL (Settings → Actions → Variables).
-3. Make the repo **public** (free Pages) and enable **Pages → Source: GitHub Actions**.
-4. Push `main` — `.github/workflows/pages.yml` builds and deploys the static site.
-5. Open the Pages URL, click **⚙**, and paste your `WEB_API_TOKEN`. The token lives only in your
-   browser (localStorage) — it is **never** baked into the published page.
+## The earlier Python version
 
-> The token guards every `/api` route, so a public Pages URL exposes nothing without it. Without a
-> token the API is open — only acceptable on a private network.
-
-### Or host the whole app free on HuggingFace Spaces
-GitHub Pages can't run the backend, so "Search now" / status writes need a server. The simplest free
-way to get the **full** app (UI + backend, same-origin, no box) is a HuggingFace **Docker Space**: it
-`pip install`s this repo and runs the FastAPI app. See [`deploy/hf-space/`](deploy/hf-space/) for the
-`Dockerfile`, the Space `README.md`, and setup (secrets + private/public choice). Autonomous 3h runs
-still belong on the box or a GitHub Actions cron (free Spaces sleep when idle).
-
-> **Note on the SQLite move:** the DB is now a local file, so a *free* HF Space (ephemeral disk) loses
-> its listings on restart, and a GitHub Actions cron gets a fresh empty DB each run (so dedup/wiki
-> can't accumulate). For durable data run on a persistent box (the Tailscale/systemd path above) — or
-> attach [persistent storage](https://huggingface.co/docs/hub/spaces-storage) and point `DB_PATH` at
-> it. The box path is the recommended, fully-working setup.
-
-## Deploy (every 3 hours)
-```bash
-bash deploy/systemd/install.sh             # installs a user systemd timer
-systemctl --user list-timers               # verify next run
-journalctl --user -u apartment-agent -f    # watch logs
-```
+The agent started as a Python [LangGraph](https://langchain-ai.github.io/langgraph/) pipeline on a
+home server: scrape every three hours, deduplicate in SQLite, rank listings with a tiered set of
+LLMs (free models first, paid ones only when needed), keep a markdown wiki of the market, and send
+matches to Telegram. It was retired in October 2026 when WG-Gesucht changed its page layout and the
+search moved to Garching. The code is still in `src/apartment_agent/` until its useful parts are
+ported, but it is no longer maintained and its scraper no longer finds listings.
 
 ## Disclaimer
-Personal, low-frequency automation for my own apartment search; scraped data is not redistributed.
-Scraping may conflict with a site's Terms of Service — use responsibly and gently.
+
+A personal, low-frequency tool for one apartment search. Listing data is not redistributed.
+Scraping may conflict with a site's terms of service, so keep request rates gentle.
