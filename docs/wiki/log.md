@@ -2,6 +2,15 @@
 
 Append-only history of documentation passes. Newest first.
 
+## 2026-11-18 - SAP anchor removed, README rewritten
+
+**Pages updated**: `decisions/bike-time-filter` (update section), `decisions/cloudflare-workers-hosting`
+(goal), `index`; root `README.md` rewritten around the live Worker.
+
+**Evidence sources** (checked 2026-11-18)
+- `worker/` test suite after the change: 78 passed; derived radius 15.0 km.
+- Isochrone overlay regenerated from Valhalla for TUM and the 9 U6 stops.
+
 ## 2026-10-23 — Kleinanzeigen as a second source
 
 **Pages added**: `decisions/kleinanzeigen-source` (goal, invariants, components, failure model,

@@ -1,10 +1,11 @@
 # Garching flat hunt (Cloudflare Worker)
 
 The live agent (https://apartment-agent.alialp.workers.dev). One Worker scrapes WG-Gesucht and
-Kleinanzeigen (flats, WG/temporary, houses) every hour (05:00-22:00 UTC), keeps listings whose warm rent is at most 650 EUR, available by 31 Jan 2027,
-and either within a 37-minute e-bike ride (22 km/h, routed) of both TUM Garching and SAP Garching or
-within 10 minutes of a U6 station between Garching-Forschungszentrum and Nordfriedhof, and serves a
-dashboard with a map. Changing a criterion re-decides listings that are still online.
+Kleinanzeigen (flats, WG/temporary, houses) every hour (05:00-22:00 UTC) and keeps listings whose
+warm rent is at most 650 EUR, available by 31 Jan 2027, and either within a 37-minute e-bike ride
+(22 km/h, routed) of TUM Garching or within 10 minutes of a U6 station between
+Garching-Forschungszentrum and Nordfriedhof. It serves a dashboard with a map. Changing a criterion
+re-decides listings that are still online.
 Design and rejected alternatives:
 [docs/wiki/decisions/cloudflare-workers-hosting.md](../docs/wiki/decisions/cloudflare-workers-hosting.md)
 and [bike-time-filter.md](../docs/wiki/decisions/bike-time-filter.md).

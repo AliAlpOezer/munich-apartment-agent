@@ -129,7 +129,7 @@ describe("search area", () => {
       expect(haversineKm(area.lat, area.lng, s.lat, s.lng) + stopKm).toBeLessThanOrEqual(area.radiusM / 1000);
     }
     // Nordfriedhof (11.2 km out) + 10 min x 22 km/h beats 37 min x 22 km/h around the anchors.
-    expect(area.radiusM).toBe(14900);
+    expect(area.radiusM).toBe(15000);
   });
 
   it("builds the page-0 URL with the rent cap and radius", () => {
@@ -137,7 +137,7 @@ describe("search area", () => {
     expect(url.hostname).toBe("www.wg-gesucht.de");
     expect(url.pathname).toContain("-in-Muenchen.90.0+1+2+3.1.0.html");
     expect(url.searchParams.get("rMax")).toBe("650");
-    expect(url.searchParams.get("radDis")).toBe("14900");
+    expect(url.searchParams.get("radDis")).toBe("15000");
     expect(url.searchParams.getAll("categories[3]")).toEqual(["3"]);
   });
 });

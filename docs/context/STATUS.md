@@ -1,11 +1,11 @@
 # Status — munich-apartment-agent
 
-Last updated: 2026-10-23 (evening)
+Last updated: 2026-11-18
 
 ## Current focus
 
-Live Cloudflare Worker (`worker/`) aimed at Garching: TUM Campus Garching + SAP Labs Munich
-(Garching) as commute anchors, warm rent <= 650 EUR, available by 2027-01-31, <= 37 min by e-bike
+Live Cloudflare Worker (`worker/`) aimed at Garching: TUM Campus Garching as the only commute
+anchor (SAP Labs dropped 2026-11-18), warm rent <= 650 EUR, available by 2027-01-31, <= 37 min by e-bike
 (22 km/h, routed) or <= 10 min to a U6 station Garching-Forschungszentrum..Nordfriedhof, dashboard
 only (no Telegram). Branch `garching-cloudflare`.
 
@@ -37,6 +37,8 @@ only (no Telegram). Branch `garching-cloudflare`.
 
 ## Next up
 
+- Deploy the SAP removal (`cd worker && npx wrangler deploy`): as of 2026-11-18 production still
+  runs the two-anchor config; the agent's deploy was blocked by the harness permission check.
 - Merge `kleinanzeigen-source`: production runs it, `main` doesn't yet.
 - If `/api/listings` starts hitting CPU limits: build the JSON in SQL (`json_group_array`) instead of
   parsing and re-serializing every row in the Worker.
@@ -46,6 +48,9 @@ only (no Telegram). Branch `garching-cloudflare`.
   `deploy/` (systemd, HF Space) and `.github/workflows/pages.yml`.
 
 ## Recently landed
+
+- 2026-11-18 SAP Labs removed as a commute anchor (config, tests, map overlay, docs); root README
+  rewritten around the live Worker.
 
 - 2026-10-23 Kleinanzeigen as a second source: source seam, search streams, page frontier,
   detail-stage routing, swap rule, room-size rule for shared flats; dashboard source badge.

@@ -31,7 +31,7 @@ const router: Route = async (_url, init) => {
   const body = JSON.parse(String(init?.body));
   const rows = body.sources.map((s: { lat: number }, i: number) =>
     body.targets.map((_t: unknown, j: number) => {
-      const m = j < settings.criteria.anchors.length ? ride(s.lat).bike : ride(s.lat).stop + (j - 2);
+      const m = j < settings.criteria.anchors.length ? ride(s.lat).bike : ride(s.lat).stop + (j - settings.criteria.anchors.length);
       return { from_index: i, to_index: j, time: m * 60, distance: m / 3 };
     }),
   );

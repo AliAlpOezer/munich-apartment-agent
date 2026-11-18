@@ -50,7 +50,7 @@ describe("reads", () => {
     }>();
     expect(res.headers.get("cache-control")).toBe("no-store");
     expect(body.criteria.maxWarmRentEur).toBe(650);
-    expect(body.searchArea.radiusM).toBe(14900);
+    expect(body.searchArea.radiusM).toBe(15000);
     expect(body.writesEnabled).toBe(true);
     expect(body.sources).toEqual([
       { id: "wg_gesucht", label: "WG-Gesucht", origin: "https://www.wg-gesucht.de" },

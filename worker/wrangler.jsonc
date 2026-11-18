@@ -44,8 +44,7 @@
     // Listing sites to search (ids from src/registry.ts). Drop one here if it starts blocking.
     "SOURCES": ["wg_gesucht", "kleinanzeigen"],
     "ANCHORS": [
-      { "label": "TUM", "name": "TUM Campus Garching (CIT)", "lat": 48.2625535, "lng": 11.6680432 },
-      { "label": "SAP", "name": "SAP Labs Munich, Garching", "lat": 48.2641004, "lng": 11.6607557 }
+      { "label": "TUM", "name": "TUM Campus Garching (CIT)", "lat": 48.2625535, "lng": 11.6680432 }
     ],
     "MAX_WARM_RENT_EUR": 650,
     // Alternative commute: a short ride to any U6 station between the campus and Nordfriedhof

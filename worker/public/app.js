@@ -185,7 +185,7 @@ function bikeFact(l) {
   const approx = l.bike_source === "estimate" ? "~" : "";
   const parts = (l.bike_detail ?? [{ label: "", minutes: l.bike_minutes }])
     .map((a) => `${approx}${Math.round(a.minutes)} min${a.label ? ` ${a.label}` : ""}`);
-  return el("span", { class: "fact", title: `${l.bike_km ?? "?"} km by e-bike (slower anchor)` }, icon("bike"), parts.join(" · "));
+  return el("span", { class: "fact", title: `${l.bike_km ?? "?"} km by e-bike${(l.bike_detail?.length ?? 0) > 1 ? " (slower anchor)" : ""}` }, icon("bike"), parts.join(" · "));
 }
 
 // Shown only when the short ride to the line is a qualifying commute on its own.
